@@ -247,9 +247,9 @@ class RandomizeConfig(SerializableConfig):
         drawn from Uniform(-pol_rot_max, +pol_rot_max)
         Controls the spread of polarization orientations:
         - pol_rot_max = 0        for deterministic polarization orientation
-        - 0 < pol_rot_max < pi/2 for partially randomized orientation
-        - pol_rot_max = pi/2     for fully randomized orientation
-        Must lie in [0, pi/2].
+        - 0 < pol_rot_max < pi for partially randomized orientation
+        - pol_rot_max = pi     for fully randomized orientation
+        Must lie in [0, pi].
 
         Ignored if `pol_state=True`.
         
@@ -262,7 +262,7 @@ class RandomizeConfig(SerializableConfig):
         
     """
     seed: int = 24459
-    pol_rot_max: float = np.pi/2
+    pol_rot_max: float = np.pi
     phase_max  : float = np.pi
     pol_state  : bool  = False
     amplitude  : bool  = True
