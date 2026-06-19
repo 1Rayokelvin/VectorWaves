@@ -30,17 +30,23 @@ from .version import current_version
 
 def _check_scalar(val: Any, name: str, dtype: Type, allow_complex: bool = False) -> Any:
     """
-    Strictly validates a scalar value against a specific type.
+    Strictly validates a scalar value against a specific type and ensures finiteness.
     """
     if not allow_complex and isinstance(val, (complex, np.complex128, np.complex64)):
-        raise TypeError(f"Config Error['{name}']: Expected {dtype.__name__}, got complex '{val}'")
+        raise TypeError(f"Config Error ['{name}']: Expected {dtype.__name__}, got complex '{val}'")
+
     if dtype is int and not isinstance(val, (int, np.integer)):
         raise TypeError(f"Config Error ['{name}']: Expected strict integer, got {type(val).__name__} '{val}'")
+
     try:
-        return dtype(val)
+        casted = dtype(val)
     except (ValueError, TypeError):
         raise TypeError(f"Config Error ['{name}']: Cannot convert {type(val).__name__} to {dtype.__name__}")
 
+    if isinstance(casted, (float, np.floating)) and not np.isfinite(casted):
+        raise ValueError(f"Config Error ['{name}']: Must be a finite number, got '{casted}'")
+
+    return casted
 
 def _coerce_tuple(val: Any, length: int, name: str, dtype: Type = float) -> Tuple:
     """
@@ -226,45 +232,71 @@ class RandomizeConfig(SerializableConfig):
     ----------
     seed : int
         Seed for the random number generator ensuring reproducible fields.
-    phase : bool
-        If True, applies a random phase uniform in [0, 2pi] to each mode.
-    pol_rot : bool
-        If True, applies a random rotation to the polarization vector per mode.
+
+    phase_max : float
+        Applies a random phase offset phi to each mode 
+        drawn from Uniform(-phase_max, +phase_max).
+        This controls the degree of phase randomness:
+        - phase_max = 0      for fully deterministic phase
+        - 0 < phase_max < pi for partially randomized phase
+        - phase_max = pi     for fully randomized phase
+        Must lie in [0, pi].
+
+    pol_rot_max : float
+        Maximum random rotation angle applied to the polarization vector 
+        drawn from Uniform(-pol_rot_max, +pol_rot_max)
+        Controls the spread of polarization orientations:
+        - pol_rot_max = 0        for deterministic polarization orientation
+        - 0 < pol_rot_max < pi/2 for partially randomized orientation
+        - pol_rot_max = pi/2     for fully randomized orientation
+        Must lie in [0, pi/2].
+
+        Ignored if `pol_state=True`.
+        
     pol_state : bool
         If True, samples fully random polarization states from the Poincaré sphere.
-        Overrides `pol_rot`.
+        Overrides `pol_rot_max`.
+
     amplitude : bool
         If True, applies a complex random normal factor to the mode amplitude.
+        
     """
     seed: int = 24459
-    phase: bool = True
-    pol_rot: bool = True
-    pol_state: bool = False
-    amplitude: bool = True
+    pol_rot_max: float = np.pi/2
+    phase_max  : float = np.pi
+    pol_state  : bool  = False
+    amplitude  : bool  = True
 
     def validate(self):
-        for f in["phase", "pol_rot", "pol_state", "amplitude"]:
+        for f in["pol_state", "amplitude"]:
             val = getattr(self, f)
             if not isinstance(val, (bool, np.bool_)):
                 raise TypeError(f"Config Error ['randomize.{f}']: Expected bool, got {type(val).__name__}")
         self.seed = _check_scalar(self.seed, "randomize.seed", int)
-        if self.pol_rot and self.pol_state:
+
+        self.phase_max = _check_scalar(self.phase_max, "randomize.phase_max", float)
+        if not 0 <= self.phase_max <= np.pi:
+            raise ValueError("Random phase_max must be in [0, pi].")
+        self.pol_rot_max = _check_scalar(self.pol_rot_max, "randomize.pol_rot_max", float)
+        if not 0 <= self.pol_rot_max <= np.pi:
+            raise ValueError("Random pol_rot_max must be in [0, pi].")
+
+        if self.pol_state and self.pol_rot_max > 0:
             warnings.warn(
-                "Both 'pol_rot' and 'pol_state' are True. 'pol_state' overrides 'pol_rot'.", 
+                "'pol_state' is True and 'pol_rot_max' is present. 'pol_state' overrides 'pol_rot_max'.", 
                 UserWarning
                 )
 
     def off(self) -> "RandomizeConfig":
         """Turns off all randomness, making the beam perfectly coherent and deterministic."""
-        self.phase = False
-        self.pol_rot = False
+        self.pol_rot_max = 0
+        self.phase_max = 0
         self.pol_state = False
         self.amplitude = False
         return self
 
     def __post_init__(self):
         self.validate()
-
 
 @dataclass(slots=True)
 class KSpaceConfig(SerializableConfig):
@@ -292,27 +324,58 @@ class KSpaceConfig(SerializableConfig):
     vectorised: bool = True
 
     def uniform(self) -> "KSpaceConfig":
-        """Sets k-space profile to Uniform (no scaling applied)."""
+        """
+        Sets k-space profile to a flat angular spectrum (Uniform k-space).
+        Weights all plane waves equally.
+        """
         self.profile = KSpaceSpectra.uniform
         self.params = {}
         return self
 
     def gaussian(self, sigma_k_perp: float = 1.5) -> "KSpaceConfig":
-        """Sets k-space profile to a Gaussian envelope."""
+        """
+        Sets k-space profile to a Gaussian envelope.
+
+        Parameters
+        ----------
+        sigma_k_perp : float, default=1.5
+            The standard deviation of the Gaussian envelope in k-space.
+            Inversely proportional to the real-space beam waist.
+        """
         self.profile = KSpaceSpectra.gaussian
         self.params = {'sigma_k_perp': sigma_k_perp}
         self.vectorised = True
         return self
 
     def tophat(self, k_perp_max: float = 1.0) -> "KSpaceConfig":
-        """Sets k-space profile to a Top-Hat sharp cutoff."""
+        """
+        Sets k-space profile to a sharp Top-Hat cutoff, producing an Airy disk 
+        in real space.
+
+        Parameters
+        ----------
+        k_perp_max : float, default=1.0
+            The maximum transverse spatial frequency allowed.
+        """
         self.profile = KSpaceSpectra.tophat
         self.params = {'k_perp_max': k_perp_max}
         self.vectorised = True
         return self
         
     def laguerre_gauss(self, *, p: int = 0, l: int = 0, sigma_k_perp: float = 0.5) -> "KSpaceConfig":
-        """Sets k-space profile to a Laguerre-Gauss (OAM Vortex) mode."""
+        """
+        Sets k-space profile to a Laguerre-Gauss mode carrying 
+        Orbital Angular Momentum.
+
+        Parameters
+        ----------
+        p : int, default=0
+            Radial index (p >= 0). Determines the number of radial rings.
+        l : int, default=0
+            Azimuthal index (topological charge). Determines the OAM.
+        sigma_k_perp : float, default=0.5
+            Transverse scaling parameter in k-space.
+        """
         if p < 0: raise ValueError("LG index p must be >= 0")
         self.profile = KSpaceSpectra.laguerre_gauss
         self.params = {'p': p, 'l': l, 'sigma_k_perp': sigma_k_perp}
@@ -320,7 +383,18 @@ class KSpaceConfig(SerializableConfig):
         return self
     
     def hermite_gauss(self, *, l: int = 0, m: int = 0, sigma_k_perp: float = 0.5) -> "KSpaceConfig":
-        """Sets k-space profile to a Hermite-Gauss mode."""
+        """
+        Sets k-space profile to a higher-order Hermite-Gauss transverse mode.
+
+        Parameters
+        ----------
+        l : int, default=0
+            Transverse mode index in the x-direction (l >= 0).
+        m : int, default=0
+            Transverse mode index in the y-direction (m >= 0).
+        sigma_k_perp : float, default=0.5
+            Transverse scaling parameter in k-space.
+        """
         if l < 0 or m < 0: raise ValueError("HG indices l, m must be >= 0")
         self.profile = KSpaceSpectra.hermite_gauss
         self.params = {'l': l, 'm': m, 'sigma_k_perp': sigma_k_perp}
@@ -328,7 +402,18 @@ class KSpaceConfig(SerializableConfig):
         return self
 
     def bessel_gauss(self, *, theta_deg: float = 10.0, sigma_theta: float = 0.05, l: int = 0) -> "KSpaceConfig":
-        """Sets k-space profile to a Bessel-Gauss mode."""
+        """
+        Sets k-space profile to a Bessel-Gauss mode, creating a non-diffracting core.
+
+        Parameters
+        ----------
+        theta_deg : float, default=10.0
+            Cone opening angle (in degrees) of the Bessel beam in k-space.
+        sigma_theta : float, default=0.05
+            Angular thickness (in radians) of the Gaussian ring.
+        l : int, default=0
+            Topological charge. If l != 0, creates a Higher-Order Bessel beam.
+        """
         if theta_deg > 70: 
             warnings.warn(
                 "Large Bessel cone angles interact strangely with hemisphere clipping.",
@@ -343,16 +428,28 @@ class KSpaceConfig(SerializableConfig):
         """
         Sets a user-defined custom k-space profile function.
         
-        Expected signature:
-            If vectorised=True:  fn(k: np.ndarray[3, N], **params) -> np.ndarray[N]
-            If vectorised=False: fn(k: np.ndarray[3], **params) -> complex
+        Parameters
+        ----------
+        fn : Callable
+            Function signature: fn(k: np.ndarray, **params) -> complex/np.ndarray
+        vectorised : bool, default=False
+            If True, `fn` must accept a (3, N) array and return an (N,) array.
+            Else: fn must accept a (3,) array and return a complex number.
+        **params : Any
+            Keyword arguments passed directly into `fn` during evaluation.
+
+        Notes
+        -----
+        The provided function `fn` will be tested with a dummy wavevector 
+        array (np.random.randn(3, 2) if vectorised else np.random.randn(3)) 
+        to validate its return type and shape.
         """
         self.profile = fn
         self.params = params
         self.vectorised = vectorised
         self.validate()
         return self
-
+    
     def validate(self):
         if getattr(self.profile, '__name__', '') == 'custom_callable_fail': return
         try:
@@ -391,34 +488,73 @@ class PolychromaticConfig(SerializableConfig):
     params: Dict[str, Any] = field(default_factory=dict)
 
     def uniform(self) -> "PolychromaticConfig":
-        """Sets Uniform polychromatic envelope (no scaling applied)."""
+        """
+        Sets a flat spectral envelope (all wavelengths weighted equally).
+        """
         self.profile = PolychromaticSpectra.uniform
         self.params = {}
         return self
 
     def gaussian(self, center: float = 8.0, sigma: float = 0.5) -> "PolychromaticConfig":
-        """Sets Gaussian polychromatic envelope."""
+        """
+        Sets a Gaussian spectral weight distribution.
+
+        Parameters
+        ----------
+        center : float, default=8.0
+            The central wavelength (mean).
+        sigma : float, default=0.5
+            The spectral bandwidth (standard deviation).
+        """
         self.profile = PolychromaticSpectra.gaussian
         self.params = {'center': center, 'sigma': sigma}
         return self
     
     def lorentzian(self, center: float = 8.0, gamma: float = 0.5) -> "PolychromaticConfig":
-        """Sets Lorentzian (natural broadening) polychromatic envelope."""
+        """
+        Sets a Lorentzian spectral weight distribution.
+
+        Parameters
+        ----------
+        center : float, default=8.0
+            The central resonance wavelength.
+        gamma : float, default=0.5
+            The Half-Width at Half-Maximum of the spectrum.
+        """
         self.profile = PolychromaticSpectra.lorentzian
         self.params = {'center': center, 'gamma': gamma}
         return self
 
     def tophat(self, center: float = 8.0, width: float = 1.0) -> "PolychromaticConfig":
-        """Sets Top-Hat bandpass polychromatic envelope."""
+        """
+        Sets a Top-Hat bandpass spectral envelope.
+
+        Parameters
+        ----------
+        center : float, default=8.0
+            The central wavelength of the bandpass.
+        width : float, default=1.0
+            The total spectral width of the bandpass.
+        """
         self.profile = PolychromaticSpectra.tophat
         self.params = {'center': center, 'width': width}
         return self
 
     def custom(self, fn: Callable, **params) -> "PolychromaticConfig":
         """
-        Sets a user-defined polychromatic envelope.
+        Sets a user-defined custom polychromatic envelope.
             
-        Expected signature: fn(wavelength, **params) -> float
+        Parameters
+        ----------
+        fn : Callable
+            Function signature: fn(wavelength: float, **params) -> float
+        **params : Any
+            Keyword arguments passed directly into `fn` during evaluation.
+
+        Notes
+        -----
+        The provided function `fn` will be tested with a dummy wavelength 
+        (8.0) to validate that it returns a finite scalar.
         """
         self.profile = fn
         self.params = params
@@ -541,8 +677,15 @@ class Config(SerializableConfig):
 
     Attributes
     ----------
-    backend : Literal["auto", "numpy", "numba"]
+    backend : Literal["auto", "numpy", "numba", "cupy", "cupy64"]
         Computational backend to execute evaluations. Defaults to "auto".
+        All backends perform exactly the same physical superposition of plane waves, 
+        but scale differently based on hardware:
+        - "numpy"  : Vectorized CPU fallback (highest RAM usage, best for small sets).
+        - "numba"  : JIT compiled parallel CPU loops (low RAM usage, fast CPU).
+        - "cupy32" : Single-precision GPU execution (fastest for massive computations).
+        - "cupy64" : Double-precision GPU execution (slower than cupy, but exact).
+        - "auto"   : Defaults to cupy64 if available, else numba, else numpy.
     op : OpConfig
         Settings for the Observation Plane (grid size, center, resolution).
     source : SourceConfig
@@ -550,7 +693,7 @@ class Config(SerializableConfig):
     verbose : bool
         If True, prints execution details and deep warnings.
     """
-    backend: Literal["auto", "numpy", "numba"] = "auto"
+    backend: Literal["auto", "numpy", "numba", "cupy32", "cupy64"] = "auto"
     op: OpConfig = field(default_factory=OpConfig)
     source: SourceConfig = field(default_factory=SourceConfig)
     verbose: bool = False
@@ -560,7 +703,7 @@ class Config(SerializableConfig):
         self.source.validate()
 
         self.backend = str(self.backend).lower()
-        allowed = ["numba", "numpy", "auto"]
+        allowed = ["numba", "numpy", "auto", "cupy32", "cupy64"]
         if self.backend not in allowed:
             raise ValueError(f"Invalid backend: {self.backend}. Must be one of {allowed}")
 
@@ -568,8 +711,8 @@ class Config(SerializableConfig):
         min_wl = np.min(wls)
         if self.op.spacing > min_wl / 2:
             warnings.warn(
-                f"Spatial aliasing detected. Grid spacing ({self.op.spacing} um) "
-                f"is larger than half the minimum wavelength ({min_wl/2:.4f} um).", 
+                f"Spatial aliasing detected. Grid spacing ({self.op.spacing}) "
+                f"is larger than half the minimum wavelength ({min_wl/2:.4f}).", 
                 UserWarning
             )
 

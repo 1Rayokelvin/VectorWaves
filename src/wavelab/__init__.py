@@ -34,7 +34,7 @@ from .config_stuff import (
 
 # Core Pipeline
 from .beam_stuff import BeamMaker, Beam
-from .engine_stuff import FieldEngine, FieldResult
+from .engine_stuff import FieldEngine, FieldResult, tqdm
 
 # Utilities & Physics Math
 from .utils import (
@@ -55,16 +55,6 @@ def setup_engine(config: Config) -> FieldEngine:
     High-level wrapper to generate the beam and initialize the computation engine.
     """
     return FieldEngine(setup_beam(config), config)
-
-# optional tqdm dependency
-try:
-    from tqdm import tqdm
-except ImportError:
-    def tqdm(total=None, disable=False, desc=None, **kwargs):
-        class DummyPbar:
-            def update(self, n): pass
-            def close(self): pass
-        return DummyPbar()
 
 __all__ =[
     # Config

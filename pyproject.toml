@@ -12,10 +12,30 @@ authors = [
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
+
+# CORE DEPENDENCIES
+# These are strictly required for the physics pipeline to function.
 dependencies = [
-  "numpy==2.2.6",
-  "numba==0.63.1",
-  "scipy==1.15.3"
+  "numpy>=1.24.0",
+  "scipy>=1.10.0",
+  "numba>=0.59.0" 
+]
+
+[project.optional-dependencies]
+# VISUALIZATION: Plotting k-space, profiles, and tutorials
+viz = [
+  "matplotlib>=3.7.0",
+  "pyvista>=0.40.0"
+]
+
+# PROGRESS: Console loading bars
+progress = [
+  "tqdm>=4.65.0"
+]
+
+# GPU: CuPy for CUDA 12.x (Note: Users with AMD or older CUDA will need to install their specific cupy build)
+gpu = [
+  "cupy-cuda12x>=12.0.0"
 ]
 
 [tool.setuptools.dynamic]

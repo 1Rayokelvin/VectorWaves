@@ -4,7 +4,7 @@ Field Engine & Results
 
 The final stage of the WaveLab pipeline. This module provides the `FieldEngine`, 
 which orchestrates the spatial evaluation of electromagnetic fields by routing 
-precomputed `Beam` objects to hardware backends (NumPy or Numba for now).
+precomputed `Beam` objects to hardware backends (NumPy, Numba or CuPy).
 
 All computations are encapsulated in the `FieldResult` container, which provides 
 a unified interface for Electric field components, vector calculus operations (Curl, 
@@ -18,7 +18,7 @@ Pipeline Context:
 
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import numpy as np
 
@@ -32,7 +32,23 @@ try:
 except ImportError:
     NumbaMethods = None
     has_numba = False
+try:
+    from .backends.cupy_backend import CupyMethods, has_cupy
+except ImportError:
+    CupyMethods = None
+    has_cupy = False
 
+# tqdm
+if TYPE_CHECKING:
+    from tqdm import tqdm
+else:
+    try:
+        from tqdm import tqdm
+    except ImportError:
+        class tqdm:
+            def __init__(self, *args, **kwargs): pass
+            def update(self, n): pass
+            def close(self): pass
 
 @dataclass
 class FieldResult:
@@ -167,42 +183,57 @@ class FieldEngine:
     def selector(self, choice: str) -> str:
         choice = choice.lower()
         if choice == "auto":
+            if has_cupy: return "cupy64"
             return "numba" if has_numba else "numpy"
-        elif choice == "numba":
-            if not has_numba: 
-                raise ValueError("Numba backend is requested, but it is unavailable")
-            return "numba"
-        elif choice == "numpy": 
-            return "numpy"
-        else: 
-            raise ValueError(f"Backend '{choice}' is not supported.")
+        
+        # Define supported strings
+        valid_backends = ["numpy", "numba", "cupy32", "cupy64"]
+        if choice not in valid_backends:
+            raise ValueError(f"Backend '{choice}' not supported. Choose from {valid_backends}")
+            
+        # Check availability
+        if choice.startswith("cupy") and not has_cupy:
+            raise ValueError("CuPy backend requested but cupy is not installed or no GPU found.")
+        if choice == "numba" and not has_numba:
+            raise ValueError("Numba backend requested but numba is not installed.")
+            
+        return choice
 
     def get_backend(self, backend_name: Optional[str] = None):
-        if not backend_name: 
-            backend_name = self.backend_name
-        if backend_name == "numba":
-            return NumbaMethods(self.beam)
-        elif backend_name == "numpy":
-            return NumpyMethods(self.beam)
-        else: 
-            raise ValueError(f"Unknown backend: {backend_name}")
+        if backend_name is None: 
+            return self.get_backend(self.backend_name)
+        name = self.selector(backend_name)
         
+        if name == "numpy":
+            return NumpyMethods(self.beam)
+
+        elif name == "numba" and NumbaMethods:
+            return NumbaMethods(self.beam)
+
+        elif name == "cupy32" and CupyMethods:
+            return CupyMethods(self.beam, use_single_precision=True)
+
+        elif name == "cupy64" and CupyMethods:
+            return CupyMethods(self.beam, use_single_precision=False)
+
+        raise RuntimeError(f"Backend '{name}' could not be constructed.")
+            
     def _wrap_results(self, E: np.ndarray, D: Optional[tuple], B: Optional[np.ndarray]) -> FieldResult:
         """Helper to package raw backend output into FieldResult."""
         E.flags.writeable = False
         if B is not None: B.flags.writeable = False
         
         jacobian_E = None
-        if D is not None and D[0] is not None:
-            jacobian_E = np.stack(np.array(D), axis=1)
+        if D is not None and all(d is not None for d in D):
+            jacobian_E = np.stack(D, axis=1)
             jacobian_E.flags.writeable = False
-        
+
         return FieldResult(E=E, _B=B, _jacobian_E=jacobian_E)
     
     def compute_on_op( 
             self, z: float = 0.0, t: float = 0.0, 
             need_b: bool = True, need_derivs: bool = True, 
-            backend_name: Optional[str] = None,
+            backend_name: Optional[str] = None, progress_bar: bool = False
         ) -> FieldResult:
         """
         Computes the electromagnetic field arrays on the Observation Plane (OP).
@@ -222,6 +253,8 @@ class FieldEngine:
             If True, calculates and returns spatial derivatives (Jacobian).
         backend_name : str, optional
             Override the default backend for this specific call.
+        progress_bar : bool, optional
+            Provides a tqdm progress bar if available.
 
         Returns
         -------
@@ -230,60 +263,35 @@ class FieldEngine:
         """
         if np.ndim(z) != 0 or np.ndim(t) != 0:
             raise ValueError("compute_on_op requires 'z' and 't' to be scalars.")
-
         backend = self.get_backend(backend_name)
 
         if self.config.verbose:
             print(f"OP Grid: {len(self.x)}x{len(self.y)} points | Spacing: {self.config.op.spacing} | Z: {z}")
             t0 = time.time()
+        
+        callback = None
+        if progress_bar:
+            pbar = tqdm(total=len(self.y), desc="OP Grid", unit="rows")
+            callback = lambda n: pbar.update(n)
 
         E, D, B = backend.compute_grid(
             self.x, self.y, z, t,
             need_b=need_b, need_derivs=need_derivs,
-            progress_bar=self.config.verbose,
+            progress_callback=callback,
         )
+        if progress_bar:
+            pbar.close()
 
         if self.config.verbose:
             print(f"OP Computation complete in {time.time() - t0:.4f}s")
 
         return self._wrap_results(E, D, B)    
     
-    def compute_grid(
-            self, x_vec: np.ndarray, y_vec: np.ndarray, z: float = 0.0, t: float = 0.0,
-            need_b: bool = True, need_derivs: bool = True, backend_name: Optional[str] = None,
-        ) -> FieldResult:
-        """
-        Direct wrapper to compute on a custom 2D grid plane.
-        
-        Returns
-        -------
-        FieldResult
-            Object containing E (3, len(y_vec), len(x_vec)) and optional fields.
-        """
-        x_vec = np.atleast_1d(x_vec)
-        y_vec = np.atleast_1d(y_vec)
-        
-        if x_vec.ndim != 1 or y_vec.ndim != 1:
-            raise ValueError(
-                f"compute_grid requires exactly 1D vectors for x and y axes. "
-                f"Got ndims - x:{x_vec.ndim}, y:{y_vec.ndim}"
-            )
-            
-        if np.ndim(z) != 0 or np.ndim(t) != 0:
-            raise ValueError("compute_grid requires 'z' and 't' to be scalars.")
-
-        backend = self.get_backend(backend_name)
-        
-        E,D,B = backend.compute_grid(
-            x_vec, y_vec, z, t, 
-            need_b=need_b, need_derivs=need_derivs, 
-            progress_bar=self.config.verbose,
-        )
-        return self._wrap_results(E,D,B)
-    
     def compute_cloud(
             self, x_arr: np.ndarray, y_arr: np.ndarray, z_arr: np.ndarray, t: float = 0.0,
             need_b: bool = True, need_derivs: bool = True, backend_name: Optional[str] = None,
+            progress_bar: bool = False
+
         ) -> FieldResult:
         """       
         Field calculator for N arbitrary points (cloud).
@@ -298,6 +306,8 @@ class FieldEngine:
             If True, includes Magnetic field.
         need_derivs : bool
             If True, includes spatial derivatives.
+        progress_bar : bool, optional
+            Provides a tqdm progress bar if available.        
 
         Returns
         -------
@@ -324,14 +334,22 @@ class FieldEngine:
         if np.ndim(t) != 0:
             raise ValueError(f"Time 't' must be a scalar, got ndim={np.ndim(t)}")
 
+        callback = None
+        if progress_bar:
+            total = len(x_arr)
+            pbar = tqdm(total=total, desc="Point Cloud", unit="pts")
+            callback = lambda n: pbar.update(n)
 
         backend = self.get_backend(backend_name)
 
         E,D,B = backend.compute_cloud(
             x_arr, y_arr, z_arr, t,
             need_b=need_b, need_derivs=need_derivs,
-            progress_bar=self.config.verbose,
+            progress_callback=callback,
         )
+        if progress_bar:
+            pbar.close()
+
         return self._wrap_results(E,D,B)
     
     def compute_point(

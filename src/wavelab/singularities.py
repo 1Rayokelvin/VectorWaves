@@ -5,14 +5,14 @@ Topological Singularity Detection
 Find and analyze polarization singularities in 3D electromagnetic fields.
 """
 
-import numpy as np
+import numpy as np, warnings
 from .engine_stuff import FieldEngine
 
 class SingularityFinder:
     """
     Locates and traces electric field singularities in 3D space.
     
-    Works with a physics engine to find points where field properties 
+    Works with a physics_engine to find points where field properties 
     become degenerate (C-points, C^T-points, L^T-points) and trace their evolution 
     through space as lines or loops.
     
@@ -23,92 +23,196 @@ class SingularityFinder:
     ----------
     physics_engine : FieldEngine
         An initialized FieldEngine capable of evaluating points in space.
-    requested_backend : str, optional
-        Computation backend to use for point queries ('numpy', 'numba', 'auto'). 
-        Default is 'numba'.
     
     Example
     -------
-    ```
-    engine = setup_engine(cfg)
+    ```python
+    engine = FieldEngine(beam, cfg)
     fields = engine.compute_on_op(z=0.0)
     
-    finder = singularity_finder(engine)
-    pts = finder.find_stokes_C_points(z_val=0.0, E_grid=fields.E)
+    finder = SingularityFinder(engine)
+    pts = finder.find_stokes_C_points(z_value=0.0, E_grid=fields.E)
+    lines = finder.trace_stokes_C_lines(pts, ds=0.05)
     ```
     """
-    def __init__(self, physics_engine: FieldEngine, requested_backend='numba'):
+    def __init__(self, physics_engine: FieldEngine):
         self.engine = physics_engine
-        self.backend_name = self.engine.selector(requested_backend)
-        if self.backend_name == 'numpy' and self.engine.config.verbose:
-            print("Using numpy for singularity finding.")
-            print("Use numba for significant speed boost.")
+        
+        # Read the engine's active backend to issue helpful warnings
+        self.backend_name = self.engine.backend_name
+        if self.backend_name == 'numpy':
+            warnings.warn(
+                "Singularity finder is using the 'numpy' backend. "
+                "Use 'numba' or 'cupy64' for a significant speed boost.",
+                RuntimeWarning
+            )
+
+        elif self.backend_name == 'cupy32':
+            raise RuntimeError(
+                "cupy32 backend is not supported: convergence heuristics assume float64 precision. "
+                "Use 'cupy64'."
+            )
+
         self.x = physics_engine.x
         self.y = physics_engine.y
         self.t = 0 
         self.x_min, self.x_max = min(self.x), max(self.x)
         self.y_min, self.y_max = min(self.y), max(self.y)
 
-    # --- Internals ---
-    def _compute_field_and_jacobian_at_point(self, x, y, z):
-        """Wraps the field_engine's calculator to get data for a single point."""
-        fields = self.engine.compute_point(
-            x,y,z,t=self.t, need_b=False, backend_name=self.backend_name
-            )
-        return fields.E, fields.jacobian_E
+    # ==========================================
+    # --- Internal Math Helpers (Batched) ---
+    # ==========================================
 
-    def _newton_raphson_2d(self, value_and_corrector, x0, y0, max_iter=10, tol=1e-6, value_tol=1e-6):
-        x, y = x0, y0
-        for _ in range(max_iter):
-            v, C = value_and_corrector(x, y)
-            try:
-                delta = np.linalg.solve(C, v)
-                x_new, y_new = x - delta[0], y - delta[1]
-                if np.hypot(x_new - x, y_new - y) < tol: return x_new, y_new, True
-                x, y = x_new, y_new
-            except np.linalg.LinAlgError: return x, y, False
-        final_v, _ = value_and_corrector(x, y)
-        if np.linalg.norm(final_v) < value_tol: return x, y, True
-        return x, y, False
-
-    def _zero_cross_mask(self, field_signs):
-        cell_max = np.maximum.reduce([field_signs[:-1, :-1], field_signs[:-1, 1:], 
-                                      field_signs[1:, :-1], field_signs[1:, 1:]])
-        cell_min = np.minimum.reduce([field_signs[:-1, :-1], field_signs[:-1, 1:], 
-                                      field_signs[1:, :-1], field_signs[1:, 1:]])
+    def _zero_cross_mask(self, field):
+        """Finds 2x2 cells on a grid where the field crosses zero."""
+        fs = np.sign(field).astype(np.int8)
+        cell_max = np.maximum(fs[:-1, :-1], fs[:-1, 1:])
+        np.maximum(cell_max, fs[1:, :-1], out=cell_max)
+        np.maximum(cell_max, fs[1:, 1:], out=cell_max)
+        
+        cell_min = np.minimum(fs[:-1, :-1], fs[:-1, 1:])
+        np.minimum(cell_min, fs[1:, :-1], out=cell_min)
+        np.minimum(cell_min, fs[1:, 1:], out=cell_min)
+        
         return (cell_max > 0) & (cell_min < 0)
 
-    def _plane_fit_zero_guess(self, y_idx, x_idx, data_q1, data_q2):
-        q1_cell = data_q1[y_idx:y_idx+2, x_idx:x_idx+2].flatten()
-        q2_cell = data_q2[y_idx:y_idx+2, x_idx:x_idx+2].flatten()
-        coords = np.array([[0, 0], [0, 1], [1, 0], [1, 1]])
-        fit_matrix = np.hstack([coords, np.ones((4, 1))])
-        try:
-            p1 = np.linalg.lstsq(fit_matrix, q1_cell, rcond=None)[0]
-            p2 = np.linalg.lstsq(fit_matrix, q2_cell, rcond=None)[0]
-            A = np.array([[p1[1], p1[0]], [p2[1], p2[0]]])
-            b = -np.array([p1[2], p2[2]])
-            dx, dy = np.linalg.solve(A, b)
-            return dx, dy, True
-        except np.linalg.LinAlgError: return 0, 0, False
+    def _batched_plane_fit_2eq(self, candidate_coords, data1, data2):
+        """
+        Vectorized least-squares plane fit for 2 equations on N cells.
+        Solves for the sub-pixel zero-crossing coordinates (dx, dy).
+        """
+        if len(candidate_coords) == 0: return np.array([]), np.array([]), np.array([], dtype=bool)
+        
+        y_idx, x_idx = candidate_coords[:, 0], candidate_coords[:, 1]
+        
+        # Extract the 4 corners of each candidate cell. Shape: (4, N)
+        q1 = np.array([data1[y_idx, x_idx], data1[y_idx, x_idx+1], data1[y_idx+1, x_idx], data1[y_idx+1, x_idx+1]])
+        q2 = np.array([data2[y_idx, x_idx], data2[y_idx, x_idx+1], data2[y_idx+1, x_idx], data2[y_idx+1, x_idx+1]])
+        
+        # Pseudoinverse for local cell coordinates [[0,0], [0,1], [1,0], [1,1]]
+        A = np.array([[0,0,1], [0,1,1], [1,0,1], [1,1,1]], dtype=float)
+        A_pinv = np.linalg.pinv(A)
+        
+        # Fit planes: p = [coeff_y, coeff_x, intercept]. Shape: (3, N)
+        p1 = A_pinv @ q1  
+        p2 = A_pinv @ q2
+        
+        # Setup Cramer's rule for A * [dy, dx]^T = b
+        a11, a12 = p1[1], p1[0] # dx, dy for eq 1
+        a21, a22 = p2[1], p2[0] # dx, dy for eq 2
+        b1, b2 = -p1[2], -p2[2] # -intercepts
+        
+        det = a11*a22 - a12*a21
+        valid = np.abs(det) > 1e-14
+        
+        dx = np.where(valid, ( a22*b1 - a12*b2) / det, -1)
+        dy = np.where(valid, (-a21*b1 + a11*b2) / det, -1)
+        
+        return dx, dy, valid & (dx >= 0) & (dx < 1) & (dy >= 0) & (dy < 1)
 
-    def _find_singularities_template(self, z_value, candidate_coords, initial_guess_func, value_and_corrector_func, 
-                                     max_iter, tol, value_tol, x_bounds=None, y_bounds=None):
-        found_points = []
-        for y_idx, x_idx in candidate_coords:
-            dx, dy, success = initial_guess_func(y_idx, x_idx)
-            if not success or not (0 <= dx < 1 and 0 <= dy < 1): continue
-            continuous_x = self.x[x_idx] + dx * (self.x[x_idx+1] - self.x[x_idx])
-            continuous_y = self.y[y_idx] + dy * (self.y[y_idx+1] - self.y[y_idx])
-            x_final, y_final, confident = self._newton_raphson_2d(lambda x_, y_: value_and_corrector_func(x_, y_, z_value),
-                                                                    continuous_x, continuous_y, max_iter=max_iter, tol=tol, value_tol=value_tol)
-            if x_bounds and not (x_bounds[0] <= x_final <= x_bounds[1]): confident = False
-            if y_bounds and not (y_bounds[0] <= y_final <= y_bounds[1]): confident = False
-            found_points.append({'position': (x_final, y_final, z_value), 'guess': (continuous_x, continuous_y, z_value), 'confident': confident})
-        return found_points
+    def _batched_plane_fit_3eq(self, candidate_coords, data1, data2, data3):
+        """
+        Vectorized least-squares plane fit solving normal equations for 3 equations on N cells.
+        Used for overdetermined systems like L-points (codimension 2 but 3 components).
+        """
+        if len(candidate_coords) == 0: return np.array([]), np.array([]), np.array([], dtype=bool)
+        
+        y_idx, x_idx = candidate_coords[:, 0], candidate_coords[:, 1]
+        
+        q1 = np.array([data1[y_idx, x_idx], data1[y_idx, x_idx+1], data1[y_idx+1, x_idx], data1[y_idx+1, x_idx+1]])
+        q2 = np.array([data2[y_idx, x_idx], data2[y_idx, x_idx+1], data2[y_idx+1, x_idx], data2[y_idx+1, x_idx+1]])
+        q3 = np.array([data3[y_idx, x_idx], data3[y_idx, x_idx+1], data3[y_idx+1, x_idx], data3[y_idx+1, x_idx+1]])
+        
+        A_pinv = np.linalg.pinv(np.array([[0,0,1], [0,1,1], [1,0,1], [1,1,1]], dtype=float))
+        
+        p1, p2, p3 = A_pinv @ q1, A_pinv @ q2, A_pinv @ q3
+        
+        # Design matrix elements across all N points
+        A_y = np.array([p1[0], p2[0], p3[0]])  # Shape: (3, N)
+        A_x = np.array([p1[1], p2[1], p3[1]])
+        b   = np.array([-p1[2], -p2[2], -p3[2]])
+        
+        # Normal equations: A.T @ A * delta = A.T @ b
+        AtA_00 = np.sum(A_y * A_y, axis=0)
+        AtA_11 = np.sum(A_x * A_x, axis=0)
+        AtA_01 = np.sum(A_y * A_x, axis=0)
+        Atb_0 = np.sum(A_y * b, axis=0)
+        Atb_1 = np.sum(A_x * b, axis=0)
+        
+        det = AtA_00*AtA_11 - AtA_01*AtA_01
+        valid = np.abs(det) > 1e-14
+        
+        dy = np.where(valid, ( AtA_11*Atb_0 - AtA_01*Atb_1) / det, -1)
+        dx = np.where(valid, (-AtA_01*Atb_0 + AtA_00*Atb_1) / det, -1)
+        
+        return dx, dy, valid & (dx >= 0) & (dx < 1) & (dy >= 0) & (dy < 1)
+
+    def _batched_newton_raphson_2d(self, value_and_corrector, x0, y0, z_value, max_iter=10, tol=1e-6, value_tol=1e-6):
+        """
+        Batched Newton-Raphson evaluating all active points simultaneously via compute_cloud.
+        Drops points as they converge to save computation.
+        """
+        x, y = x0.copy(), y0.copy()
+        z = np.full_like(x, z_value)
+        active = np.ones_like(x, dtype=bool)
+        
+        for _ in range(max_iter):
+            if not np.any(active): break
+            
+            # Query the engine for the currently active subset of points
+            fields = self.engine.compute_cloud(x[active], y[active], z[active], t=self.t, need_b=False)
+            
+            # Get values (M, 2) and Jacobian matrices (M, 2, 2) for active points
+            v, C = value_and_corrector(fields.E, fields.jacobian_E) 
+            
+            # Exact 2x2 matrix inversion via Cramer's rule for batch (M,)
+            det = C[:,0,0]*C[:,1,1] - C[:,0,1]*C[:,1,0]
+            valid_det = np.abs(det) > 1e-14
+            inv_det = np.where(valid_det, 1.0/det, 0.0)
+            
+            dx = ( C[:,1,1]*v[:,0] - C[:,0,1]*v[:,1]) * inv_det
+            dy = (-C[:,1,0]*v[:,0] + C[:,0,0]*v[:,1]) * inv_det
+            
+            x[active] -= dx
+            y[active] -= dy
+            
+            # Check convergence for this batch
+            just_converged = (np.hypot(dx, dy) < tol) & valid_det
+            active_indices = np.where(active)[0]
+            
+            # Turn off points that either converged or became singular
+            active[active_indices[just_converged]] = False
+            active[active_indices[~valid_det]] = False 
+            
+        # Final residual check across ALL points
+        fields = self.engine.compute_cloud(x, y, z, t=self.t, need_b=False)
+        final_v, _ = value_and_corrector(fields.E, fields.jacobian_E)
+        return x, y, np.linalg.norm(final_v, axis=1) < value_tol
+
+    def _find_singularities_template(self, z_value, candidate_coords, dx, dy, success, value_and_corrector_func, max_iter, tol, value_tol):
+        """Standardizes the prediction -> correction -> bound-checking pipeline."""
+        y_idx, x_idx = candidate_coords[success, 0], candidate_coords[success, 1]
+        if len(x_idx) == 0: return np.array([]), np.array([]), np.array([]), np.array([]), np.array([], dtype=bool)
+            
+        cont_x = self.x[x_idx] + dx[success] * (self.x[x_idx+1] - self.x[x_idx])
+        cont_y = self.y[y_idx] + dy[success] * (self.y[y_idx+1] - self.y[y_idx])
+        
+        final_x, final_y, confident = self._batched_newton_raphson_2d(
+            value_and_corrector_func, cont_x, cont_y, z_value, max_iter, tol, value_tol
+        )
+        
+        in_bounds = (final_x >= self.x_min) & (final_x <= self.x_max) & (final_y >= self.y_min) & (final_y <= self.y_max)
+        return cont_x, cont_y, final_x, final_y, confident & in_bounds
     
-    # --- Point finding methods ---
+    # ==========================================
+    # --- 2D Point Finding Methods ---
+    # ==========================================
+
     def _stokes_and_grads_from_EJ(self, E, J):
+        """
+        Calculates Stokes parameters and their spatial gradients.
+        Works seamlessly for both single points and batched clouds (N,) arrays!
+        """
         Ex, Ey = E[0], E[1]
         Ex_x, Ex_y, Ex_z = J[0]
         Ey_x, Ey_y, Ey_z = J[1]
@@ -130,453 +234,384 @@ class SingularityFinder:
         S2_y = 2 * np.real(Ex_y * np.conj(Ey) + Ex * np.conj(Ey_y))
         S2_z = 2 * np.real(Ex_z * np.conj(Ey) + Ex * np.conj(Ey_z))
 
-        return (
-            (S0, S1, S2, S3),
-            np.array([S0_x, S0_y, S0_z]),
-            np.array([S1_x, S1_y, S1_z]),
-            np.array([S2_x, S2_y, S2_z]),
-        )
+        return ((S0, S1, S2, S3), np.array([S0_x, S0_y, S0_z]), np.array([S1_x, S1_y, S1_z]), np.array([S2_x, S2_y, S2_z]))
     
-    def _stokes_c_point_value_and_corrector(self, x, y, z):
-        E, J = self._compute_field_and_jacobian_at_point(x, y, z)
-
-        (S0, S1, S2, _), grad_S0, grad_S1, grad_S2 = \
-            self._stokes_and_grads_from_EJ(E, J)
-
-        S0_safe = S0 if S0 > 1e-12 else 1.0
-
-        f_sp = np.array([S1, S2]) / S0_safe
-
-        J_sp = np.array([
-            (S0 * grad_S1[:2] - S1 * grad_S0[:2]) / S0_safe**2,
-            (S0 * grad_S2[:2] - S2 * grad_S0[:2]) / S0_safe**2,
-        ])
-
-        return f_sp, J_sp
+    def _stokes_c_point_value_and_corrector(self, E, J):
+        """Returns normalized S1, S2 and their 2x2 Jacobian for the XY plane."""
+        (S0, S1, S2, _), grad_S0, grad_S1, grad_S2 = self._stokes_and_grads_from_EJ(E, J)
+        S0_safe = np.where(S0 > 1e-12, S0, 1.0)
+        
+        f_sp = np.stack([S1, S2], axis=-1) / S0_safe[:, None]
+        J_sp_0 = (S0 * grad_S1[0] - S1 * grad_S0[0]) / S0_safe**2
+        J_sp_1 = (S0 * grad_S1[1] - S1 * grad_S0[1]) / S0_safe**2
+        J_sp_2 = (S0 * grad_S2[0] - S2 * grad_S0[0]) / S0_safe**2
+        J_sp_3 = (S0 * grad_S2[1] - S2 * grad_S0[1]) / S0_safe**2
+        
+        # Build batched Jacobian: Shape (N, 2, 2)
+        C = np.stack([np.stack([J_sp_0, J_sp_1], axis=-1), np.stack([J_sp_2, J_sp_3], axis=-1)], axis=1)
+        return f_sp, C
 
     def find_stokes_C_points(self, z_value, E_grid, max_iter=10, pos_tol=1e-6, value_tol=1e-6):
         """
-        Finds Stokes C-points, where polarization (2D) is purely circular (s1=s2=0).
+        Finds Stokes C-points, where transverse polarization (2D) is purely circular (s1=s2=0).
 
-        Returns list of dicts with 'position', 'guess', 'type' (Star/Lemon/Monstar), 
-        'intensity', 'handedness', and 'confident'.
+        Parameters
+        ----------
+        z_value : float
+            z-coordinate of the observation plane.
+        E_grid : np.ndarray
+            Electric field array (3, ny, nx) evaluated at `z_value` from the engine.
+        max_iter : int, optional
+            Newton-Raphson iterations per candidate.
+        pos_tol : float, optional
+            Position convergence tolerance.
+        value_tol : float, optional
+            Residual tolerance for sqrt(s1^2 + s2^2).
 
-        Args:
-            z_value: z-coordinate of observation plane
-            E_grid: Electric field array (3, ny, nx) from engine
-            max_iter: Newton-Raphson iterations per candidate
-            pos_tol: Position convergence tolerance
-            value_tol: Residual tolerance for s1, s2
+        Returns
+        -------
+        list of dict
+            List of dictionaries for each found singularity. Keys include:
+            - 'position': (x, y, z) tuple of the refined root.
+            - 'guess': (x, y, z) tuple of the initial plane-fit guess.
+            - 'type': Morphological classification ('Star', 'Lemon', 'Monstar').
+            - 'intensity': S0 value at the point.
+            - 'handedness': Sign of S3 at the point (Right or Left circular).
+            - 'confident': Boolean indicating if the solver fully converged.
         """
         Ex, Ey, _ = E_grid
-        S0 = abs(Ex)**2 + abs(Ey)**2; S0[S0 == 0] = 1
-        s1 = (abs(Ex)**2 - abs(Ey)**2) / S0
-        s2 = (2 * np.real(Ex * np.conj(Ey))) / S0
-        candidate_coords = np.argwhere(self._zero_cross_mask(np.sign(s1)) \
-                                       & self._zero_cross_mask(np.sign(s2)))
-        def guess_func(y_idx, x_idx): return self._plane_fit_zero_guess(y_idx, x_idx, s1, s2)
-        found_points = self._find_singularities_template(
-            z_value, candidate_coords, guess_func, self._stokes_c_point_value_and_corrector, 
-            max_iter, pos_tol, value_tol, (min(self.x),max(self.x)), (min(self.y),max(self.y))
-            )
-        for point in found_points:
-            x_val, y_val, _ = point['position']
-            E_pt, J_pt = self._compute_field_and_jacobian_at_point(x_val, y_val, z_value)
-            all_S, _, S1_derivs, S2_derivs = \
-                self._stokes_and_grads_from_EJ(E_pt, J_pt)
+        S0 = abs(Ex)**2 + abs(Ey)**2
+        S0_safe = np.where(S0 == 0, 1.0, S0)
+        s1, s2 = (abs(Ex)**2 - abs(Ey)**2) / S0_safe, (2 * np.real(Ex * np.conj(Ey))) / S0_safe
+
+        mask = self._zero_cross_mask(s1) & self._zero_cross_mask(s2)
+        coords = np.argwhere(mask)
+        dx, dy, success = self._batched_plane_fit_2eq(coords, s1, s2)
+        
+        g_x, g_y, f_x, f_y, conf = self._find_singularities_template(
+            z_value, coords, dx, dy, success, self._stokes_c_point_value_and_corrector, max_iter, pos_tol, value_tol
+        )
+        
+        found_points = []
+        if len(f_x) > 0:
+            # Recompute topological properties for the refined points in one batch
+            fields = self.engine.compute_cloud(f_x, f_y, np.full_like(f_x, z_value), t=self.t, need_b=False)
+            all_S, _, S1_derivs, S2_derivs = self._stokes_and_grads_from_EJ(fields.E, fields.jacobian_E)
+            S0_safe_cloud = np.where(all_S[0] > 1e-12, all_S[0], 1.0)
             
-            S0_val = all_S[0]; S0_safe = S0_val if S0_val > 1e-12 else 1.0
-            S1_x, S1_y = S1_derivs[0]/S0_safe, S1_derivs[1]/S0_safe
-            S2_x, S2_y = S2_derivs[0]/S0_safe, S2_derivs[1]/S0_safe
-            
+            S1_x, S1_y = S1_derivs[0]/S0_safe_cloud, S1_derivs[1]/S0_safe_cloud
+            S2_x, S2_y = S2_derivs[0]/S0_safe_cloud, S2_derivs[1]/S0_safe_cloud
             D_I = S1_x * S2_y - S1_y * S2_x
-            if D_I < 0:
-                point['type'] = 'Star'
-            else:
-                fact1 = (2*S1_y + S2_x)**2 - 3*S2_y*(2*S1_x - S2_y)
-                fact2 = (2*S1_x - S2_y)**2 + 3*S2_x*(2*S1_y + S2_x)
-                term2 = (2*S1_x*S1_y+ S1_x*S2_x- S1_y*S2_y+ 4*S2_x*S2_y)**2
+            
+            # Non-linear discriminant for Lemon vs Monstar
+            NL_disc = ((2*S1_y + S2_x)**2 - 3*S2_y*(2*S1_x - S2_y)) * ((2*S1_x - S2_y)**2 + 3*S2_x*(2*S1_y + S2_x)) \
+                      - (2*S1_x*S1_y + S1_x*S2_x - S1_y*S2_y + 4*S2_x*S2_y)**2
 
-                if fact1 * fact2 - term2 < 0:
-                    point['type'] = 'Lemon'
-                else:
-                    point['type'] = 'Monstar'
-
-            point['intensity'] = all_S[0]; point['handedness'] = np.sign(all_S[3])
+            for i in range(len(f_x)):
+                c_type = 'Star' if D_I[i] < 0 else ('Lemon' if NL_disc[i] < 0 else 'Monstar')
+                found_points.append({
+                    'position': (f_x[i], f_y[i], z_value), 'guess': (g_x[i], g_y[i], z_value),
+                    'type': c_type, 'intensity': float(all_S[0][i]), 'handedness': float(np.sign(all_S[3][i])),
+                    'confident': bool(conf[i])
+                })
         return found_points
 
-    def _C_T_points_v_and_c(self, x, y, z_value):
-        E, J = self._compute_field_and_jacobian_at_point(x, y, z_value)
-        E_x, E_y = J[:, 0], J[:, 1]
-        E2 = np.dot(E, E); dE2_dx = 2 * np.dot(E, E_x); dE2_dy = 2 * np.dot(E, E_y)
-        f_cp = np.array([np.real(E2), np.imag(E2)])
-        J_cp = np.array([[np.real(dE2_dx), np.real(dE2_dy)], [np.imag(dE2_dx), np.imag(dE2_dy)]])
-        return f_cp, J_cp
+    def _C_T_points_v_and_c(self, E, J):
+        """Returns value and Jacobian for True 3D Circular polarization (E dot E = 0)."""
+        E2 = np.sum(E*E, axis=0)
+        dE2_dx, dE2_dy = 2 * np.sum(E * J[:, 0, :], axis=0), 2 * np.sum(E * J[:, 1, :], axis=0)
+        
+        f_cp = np.stack([np.real(E2), np.imag(E2)], axis=-1)
+        C = np.stack([np.stack([np.real(dE2_dx), np.real(dE2_dy)], axis=-1),
+                      np.stack([np.imag(dE2_dx), np.imag(dE2_dy)], axis=-1)], axis=1)
+        return f_cp, C
 
     def find_C_T_points(self, z_value, E_grid, max_iter=10, pos_tol=1e-6, value_tol=1e-6):
         """
-        Finds C^T points where true circular polarization (3D) occurs (E·E=0).
-        
-        Returns list of dicts with 'position', 'guess', and 'confident'.
-        
-        Args:
-            z_value: z-coordinate of observation plane
-            E_grid: Electric field array (3, ny, nx) from engine
-            max_iter: Newton-Raphson iterations per candidate
-            pos_tol: Position convergence tolerance
-            value_tol: Residual tolerance for E·E
-        """
+        Finds C^T points where true 3D circular polarization occurs (E·E = 0).
 
-        E2 = np.sum(E_grid**2, axis=0); re_E2, im_E2 = np.real(E2), np.imag(E2)
-        candidate_coords = np.argwhere(self._zero_cross_mask(np.sign(re_E2)) & \
-                                       self._zero_cross_mask(np.sign(im_E2)))
-        def guess_func(y_idx, x_idx): 
-            return self._plane_fit_zero_guess(y_idx, x_idx, re_E2, im_E2)
-        
-        return self._find_singularities_template(z_value, candidate_coords, guess_func, 
-                                        self._C_T_points_v_and_c, max_iter, pos_tol, value_tol)
-    
-    def _L_T_points_v_and_c(self, x, y, z_value):
-        """
-        Computes the minimization step for Vector L-points where 
-        N = Re(E) x Im(E) = 0.
-        
-        Since this is an overdetermined system (3 equations, 2 vars),
-        we return the Normal Equations (J.T @ J and J.T @ val) 
-        compatible with the generic Newton solver.
-        """
-        # 1. Get Fields and derivatives
-        E, J = self._compute_field_and_jacobian_at_point(x, y, z_value)
-        
-        # J is 3x3 (columns are dx, dy, dz), we need dx and dy columns
-        # E_x and E_y are 3-element vectors representing partial derivatives of E vector
-        E_x, E_y = J[:, 0], J[:, 1]
+        Parameters
+        ----------
+        z_value : float
+            z-coordinate of the observation plane.
+        E_grid : np.ndarray
+            Electric field array (3, ny, nx) evaluated at `z_value` from the engine.
+        max_iter : int, optional
+            Newton-Raphson iterations per candidate.
+        pos_tol : float, optional
+            Position convergence tolerance.
+        value_tol : float, optional
+            Residual tolerance for E·E.
 
+        Returns
+        -------
+        list of dict
+            List containing 'position', 'guess', and 'confident' status for each point.
+        """
+        E2 = np.sum(E_grid**2, axis=0)
+        re_E2, im_E2 = np.real(E2), np.imag(E2)
+        
+        coords = np.argwhere(self._zero_cross_mask(re_E2) & self._zero_cross_mask(im_E2))
+        dx, dy, success = self._batched_plane_fit_2eq(coords, re_E2, im_E2)
+        
+        g_x, g_y, f_x, f_y, conf = self._find_singularities_template(
+            z_value, coords, dx, dy, success, self._C_T_points_v_and_c, max_iter, pos_tol, value_tol
+        )
+        return [{'position': (f_x[i], f_y[i], z_value), 'guess': (g_x[i], g_y[i], z_value), 'confident': bool(conf[i])} 
+                for i in range(len(f_x))]
+
+    def _L_T_points_v_and_c(self, E, J):
+        """
+        Computes the minimization step for Vector L-points where N = Re(E) x Im(E) = 0.
+        Returns the Normal Equations (J.T @ J and J.T @ val) compatible with generic Newton solver.
+        """
         ReE, ImE = np.real(E), np.imag(E)
-        ReE_x, ImE_x = np.real(E_x), np.imag(E_x)
-        ReE_y, ImE_y = np.real(E_y), np.imag(E_y)
-
-        # 2. Calculate Normal Vector N = Re(E) x Im(E)
-        # Target is N = [0, 0, 0]
-        n = np.cross(ReE, ImE)
-
-        # 3. Calculate Jacobian of N (dN/dx, dN/dy)
-        # Product rule: d(A x B) = dA x B + A x dB
-        dn_dx = np.cross(ReE_x, ImE) + np.cross(ReE, ImE_x)
-        dn_dy = np.cross(ReE_y, ImE) + np.cross(ReE, ImE_y)
+        n_vec = np.cross(ReE, ImE, axis=0)
         
-        # J_lp is 3x2 matrix
-        J_lp = np.column_stack([dn_dx, dn_dy])
-
-        # 4. Formulate Normal Equations for Least Squares
-        # The Newton solver solves C * delta = v
-        # For minimization of |N|^2, C = J.T @ J, v = J.T @ n
-        C = J_lp.T @ J_lp
-        v = J_lp.T @ n
+        dn_dx = np.cross(np.real(J[:, 0, :]), ImE, axis=0) + np.cross(ReE, np.imag(J[:, 0, :]), axis=0)
+        dn_dy = np.cross(np.real(J[:, 1, :]), ImE, axis=0) + np.cross(ReE, np.imag(J[:, 1, :]), axis=0)
         
+        C00, C11 = np.sum(dn_dx * dn_dx, axis=0), np.sum(dn_dy * dn_dy, axis=0)
+        C01 = np.sum(dn_dx * dn_dy, axis=0)
+        
+        C = np.stack([np.stack([C00, C01], axis=-1), np.stack([C01, C11], axis=-1)], axis=1)
+        v = np.stack([np.sum(dn_dx * n_vec, axis=0), np.sum(dn_dy * n_vec, axis=0)], axis=-1)
         return v, C
 
     def find_L_T_points(self, z_value, E_grid, max_iter=10, pos_tol=1e-6, value_tol=1e-6):
         """
-        Finds L^T points where true linear polarization (3D) occurs (Re(E) x Im(E)=0).
-        
-        Returns list of dicts with 'position', 'guess', and 'confident'.
-        
-        Args:
-            z_value: z-coordinate of observation plane
-            E_grid: Electric field array (3, ny, nx) from engine
-            max_iter: Newton-Raphson iterations per candidate
-            pos_tol: Position convergence tolerance
-            value_tol: Residual tolerance for normal vector
+        Finds L^T points where true 3D linear polarization occurs (Re(E) x Im(E) = 0).
+
+        Parameters
+        ----------
+        z_value : float
+            z-coordinate of the observation plane.
+        E_grid : np.ndarray
+            Electric field array (3, ny, nx) evaluated at `z_value` from the engine.
+        max_iter : int, optional
+            Newton-Raphson iterations per candidate.
+        pos_tol : float, optional
+            Position convergence tolerance.
+        value_tol : float, optional
+            Residual tolerance for the normal vector magnitude.
+
+        Returns
+        -------
+        list of dict
+            List containing 'position', 'guess', and 'confident' status for each point.
         """
-        # Compute N grid
         N_e = np.cross(np.real(E_grid), np.imag(E_grid), axis=0)
-
-        # Identify candidate cells. 
-        mask_x = self._zero_cross_mask(np.sign(N_e[0]))
-        mask_y = self._zero_cross_mask(np.sign(N_e[1]))
-        mask_z = self._zero_cross_mask(np.sign(N_e[2]))
+        coords = np.argwhere(
+            self._zero_cross_mask(N_e[0]) & self._zero_cross_mask(N_e[1]) & self._zero_cross_mask(N_e[2])
+            )
         
-        candidate_coords = np.argwhere(mask_x & mask_y & mask_z)
+        dx, dy, success = self._batched_plane_fit_3eq(coords, N_e[0], N_e[1], N_e[2])
+        g_x, g_y, f_x, f_y, conf = self._find_singularities_template(
+            z_value, coords, dx, dy, success, self._L_T_points_v_and_c, max_iter, pos_tol, value_tol
+        )
+        return [{'position': (f_x[i], f_y[i], z_value), 'guess': (g_x[i], g_y[i], z_value), 'confident': bool(conf[i])} 
+                for i in range(len(f_x))]
 
-        # Initial guess function using Least Squares Plane Fit on N_x, N_y, N_z
-        def guess_func(y_idx, x_idx):
-            # Extract 2x2 cells for all 3 components
-            Nx_cell = N_e[0, y_idx:y_idx+2, x_idx:x_idx+2].flatten()
-            Ny_cell = N_e[1, y_idx:y_idx+2, x_idx:x_idx+2].flatten()
-            Nz_cell = N_e[2, y_idx:y_idx+2, x_idx:x_idx+2].flatten()
+    # ==========================================
+    # --- 3D Batched Line Tracing Methods ---
+    # ==========================================
 
-            # Design matrix for bilinear/plane fit (y, x, 1)
-            # coords corresponds to flattened [0,0], [0,1], [1,0], [1,1]
-            coords = np.array([[0, 0], [0, 1], [1, 0], [1, 1]]) 
-            fit_matrix = np.hstack([coords, np.ones((4, 1))])
-
-            try:
-                # Fit planes: N_i = p[0]*y + p[1]*x + p[2]
-                px = np.linalg.lstsq(fit_matrix, Nx_cell, rcond=None)[0]
-                py = np.linalg.lstsq(fit_matrix, Ny_cell, rcond=None)[0]
-                pz = np.linalg.lstsq(fit_matrix, Nz_cell, rcond=None)[0]
-
-                # We want Nx=0, Ny=0, Nz=0. This is 3 eq, 2 unknowns.
-                # Solve A * [dy, dx].T = b
-                # A columns are [coeff_y, coeff_x] (from p[0], p[1])
-                A = np.array([
-                    [px[0], px[1]], 
-                    [py[0], py[1]], 
-                    [pz[0], pz[1]]
-                ])
-                b = -np.array([px[2], py[2], pz[2]])
-
-                # Least squares solve for the initial sub-pixel guess
-                (dy, dx), _, _, _ = np.linalg.lstsq(A, b, rcond=None)
-                return dx, dy, True
-            except np.linalg.LinAlgError:
-                return 0, 0, False
-
-        # Use the template to find and refine points
-        return self._find_singularities_template(z_value, candidate_coords, guess_func, 
-                                        self._L_T_points_v_and_c, max_iter, pos_tol, value_tol)
-
-    # --- Line tracing methods ---
-    def _corrector_pinv_single(self, func_val_jac, x0, y0, z0, max_iter=10, tol=1e-6):
+    def _batched_trace_lines(self, starting_points, val_jac_func, ds, max_steps, max_iter, value_tol):
         """
-        Refines a single 3D point onto the line defined by func_val_jac(x,y,z) = 0
-        using Minimum-Norm (Pseudoinverse) updates.
+        Generic routine to trace N lines simultaneously in 3D.
+        Uses a Predictor-Corrector method:
+        1. Predictor: Steps along the curve's tangent vector (Gradient 1 x Gradient 2).
+        2. Corrector: Refines the predicted point back onto the zero-curve via Minimum-Norm 
+           pseudoinverse updates (underdetermined 2x3 Newton-Raphson).
         """
-        x, y, z = x0, y0, z0
+        pts = [p['position'] if isinstance(p, dict) else p for p in starting_points]
+        if not pts: return []
         
-        for _ in range(max_iter):
-            # Get Value (2,) and Jacobian (2, 3)
-            vals, J = func_val_jac(x, y, z)
-            
-            # Check convergence (magnitude of residuals)
-            if np.linalg.norm(vals) < tol:
-                return x, y, z, True
-
-            try:
-                # Moore-Penrose Pseudoinverse for "fat" matrix J (underdetermined system)
-                # Delta = J.T * (J * J.T)^-1 * vals
-                JJT = np.dot(J, J.T)  # (2, 2)
-                lambda_vec = np.linalg.solve(JJT, vals) # (2,)
-                delta = np.dot(J.T, lambda_vec) # (3,)
-                
-                x -= delta[0]
-                y -= delta[1]
-                z -= delta[2]
-            except np.linalg.LinAlgError:
-                return x, y, z, False
-                
-        return x, y, z, False
-
-    def _trace_line_generic(self, starting_point, val_jac_func, ds, max_steps, max_iter, value_tol):
-        """
-        Generic routine to trace a line given a function that returns (Values, Jacobian_3D).
-        """
-        trajectory = []
+        xyz = np.array(pts, dtype=float)
+        N_lines = len(xyz)
+        trajectories = [[xyz[i].copy()] for i in range(N_lines)]
         
-        # Unpack start
-        if isinstance(starting_point, dict):
-            p = starting_point['position']
-        else:
-            p = starting_point
-        x, y, z = p[0], p[1], p[2]
-
-        # 1. Refine seed (Step 0)
-        x, y, z, _ = self._corrector_pinv_single(val_jac_func, x, y, z, 
-                                                 max_iter=max_iter*2, tol=value_tol)
-        trajectory.append(np.array([x, y, z]))
-
+        # Track which lines are still successfully being traced
+        active = np.ones(N_lines, dtype=bool)
+        
         for _ in range(max_steps):
-            # --- Predictor Step ---
-            # Calculate Tangent t = Gradient_1 x Gradient_2
-            _, J = val_jac_func(x, y, z)
-            grad_1 = J[0, :]
-            grad_2 = J[1, :]
+            if not np.any(active): break
             
-            tangent = np.cross(grad_1, grad_2)
-            norm_t = np.linalg.norm(tangent)
+            # --- 1. Predictor step (All Active Lines) ---
+            fields = self.engine.compute_cloud(xyz[active, 0], xyz[active, 1], xyz[active, 2], t=self.t, need_b=False)
+            vals, J = val_jac_func(fields.E, fields.jacobian_E) # J is (M, 2, 3) where M is num active lines
             
-            if norm_t < 1e-12: break # Singularity or dead end
-            tangent /= norm_t
+            # Tangent vector is cross product of the gradients of the two conditions
+            tangent = np.cross(J[:, 0, :], J[:, 1, :])
+            norm_t = np.linalg.norm(tangent, axis=1)
+            valid_t = norm_t > 1e-12
+            tangent[valid_t] = tangent[valid_t] / norm_t[valid_t, None]
             
-            # Move
-            x_pred = x + tangent[0] * ds
-            y_pred = y + tangent[1] * ds
-            z_pred = z + tangent[2] * ds
+            pred_xyz = np.zeros_like(xyz[active])
+            pred_xyz[valid_t] = xyz[active][valid_t] + tangent[valid_t] * ds
             
-            # --- Corrector Step (Relax onto line) ---
-            x, y, z, success = self._corrector_pinv_single(val_jac_func, x_pred, y_pred, z_pred, 
-                                                           max_iter=max_iter, tol=value_tol)
+            active_indices = np.where(active)[0]
+            active[active_indices[~valid_t]] = False # Kill flat tangent lines (likely topological anomalies or bounds)
             
-            if not success: break
+            # --- 2. Corrector step (Sub-loop to relax onto line) ---
+            corr_xyz = pred_xyz[valid_t]
+            corr_active = np.ones(len(corr_xyz), dtype=bool)
+            corr_success = np.zeros(len(corr_xyz), dtype=bool)
             
-            # Check bounds if necessary (optional, assumes normalized box 0-1 or similar)
-            # if not (x_min < x < x_max ...): break 
+            for _ in range(max_iter):
+                if not np.any(corr_active): break
+                c_fields = self.engine.compute_cloud(corr_xyz[corr_active, 0], corr_xyz[corr_active, 1], corr_xyz[corr_active, 2], t=self.t, need_b=False)
+                c_v, c_J = val_jac_func(c_fields.E, c_fields.jacobian_E)
+                
+                # Check convergence
+                c_converged = np.linalg.norm(c_v, axis=1) < value_tol
+                just_converged = c_converged & corr_active
+                corr_success[just_converged] = True
+                corr_active[just_converged] = False
+                
+                not_conv = ~c_converged
+                if np.any(not_conv):
+                    # Minimum Norm Pseudoinverse: Delta = J.T * (J * J.T)^-1 * vals
+                    nc_J, nc_v = c_J[not_conv], c_v[not_conv]
+                    JJT_00, JJT_11 = np.sum(nc_J[:,0,:]**2, axis=1), np.sum(nc_J[:,1,:]**2, axis=1)
+                    JJT_01 = np.sum(nc_J[:,0,:] * nc_J[:,1,:], axis=1)
+                    
+                    det = JJT_00*JJT_11 - JJT_01**2
+                    vdet = np.abs(det) > 1e-14
+                    inv_det = np.where(vdet, 1.0/det, 0.0)
+                    
+                    # Solve (J * J.T) * lambda = vals
+                    lam_0 = ( JJT_11*nc_v[:,0] - JJT_01*nc_v[:,1]) * inv_det
+                    lam_1 = (-JJT_01*nc_v[:,0] + JJT_00*nc_v[:,1]) * inv_det
+                    
+                    # Update X = X - J.T * lambda
+                    update_idx = np.where(corr_active)[0][not_conv]
+                    corr_xyz[update_idx, 0] -= nc_J[:,0,0]*lam_0 + nc_J[:,1,0]*lam_1
+                    corr_xyz[update_idx, 1] -= nc_J[:,0,1]*lam_0 + nc_J[:,1,1]*lam_1
+                    corr_xyz[update_idx, 2] -= nc_J[:,0,2]*lam_0 + nc_J[:,1,2]*lam_1
+                    
+                    corr_active[update_idx[~vdet]] = False # Kill singular lines
+            
+            # --- 3. Apply successful steps to global trajectory tracker ---
+            valid_active_indices = active_indices[valid_t]
+            active[valid_active_indices[~corr_success]] = False # Kill globally if Corrector failed
+            
+            success_local = np.where(corr_success)[0]
+            success_global = valid_active_indices[success_local]
+            xyz[success_global] = corr_xyz[success_local]
+            
+            for local_i, global_i in zip(success_local, success_global):
+                trajectories[global_i].append(corr_xyz[local_i].copy())
 
-            trajectory.append(np.array([x, y, z]))
+        return [np.array(t) for t in trajectories]
 
-        return np.array(trajectory)
-
-    def _stokes_C_val_jac_3d(self, x, y, z):
-        """Returns [s1, s2] and 2x3 Jacobian for Stokes C-lines."""
-        E, J = self._compute_field_and_jacobian_at_point(x, y, z)
-
-        # Use existing helper to get all gradients including Z
-        all_S, grad_S0, grad_S1, grad_S2 = self._stokes_and_grads_from_EJ(E, J)
-        
-        S0, S1, S2 = all_S[0], all_S[1], all_S[2]
-        S0_safe = S0 if S0 > 1e-12 else 1.0
-
-        # Normalized Stokes parameters s1 = S1/S0, s2 = S2/S0
-        vals = np.array([S1, S2]) / S0_safe
-        
-        # Quotient Rule for Gradients
-        jac = np.array([ 
-        (S0 * grad_S1[:] - S1 * grad_S0[:]) / S0_safe**2,
-        (S0 * grad_S2[:] - S2 * grad_S0[:]) / S0_safe**2,
-            ])
+    def _stokes_C_val_jac_3d(self, E, J):
+        """Returns normalized [S1, S2] and full 2x3 Jacobian for tracing Stokes C-lines."""
+        (S0, S1, S2, _), grad_S0, grad_S1, grad_S2 = self._stokes_and_grads_from_EJ(E, J)
+        S0_safe = np.where(S0 > 1e-12, S0, 1.0)
+        vals = np.stack([S1, S2], axis=-1) / S0_safe[:, None]
+        jac = np.stack([(S0 * grad_S1 - S1 * grad_S0).T / S0_safe**2, 
+                        (S0 * grad_S2 - S2 * grad_S0).T / S0_safe**2], axis=1)
         return vals, jac
 
     def trace_stokes_C_lines(self, starting_points, ds=0.05, max_steps=500, max_iter=10, value_tol=1e-6):
         """
-        Traces Stokes C-lines in 3D from seed points (s1=s2=0 curves).
+        Traces Stokes C-lines in 3D (curves where s1 = s2 = 0) originating from seed points.
 
-        Args:
-            starting_points: List of seed dicts from find_stokes_C_points() or (x,y,z) tuples
-            ds: Step size along tangent to curve
-            max_steps: Maximum number of tracing steps
-            max_iter: Corrector iterations per step
-            value_tol: Residual tolerance for sqrt(s1^2+s2^2)
+        Parameters
+        ----------
+        starting_points : list of dict or list of tuple
+            Seed points. Can be the dictionaries returned by `find_stokes_C_points()` 
+            or raw (x,y,z) coordinate tuples.
+        ds : float, optional
+            Step size spatial parameter for tracing along the tangent.
+        max_steps : int, optional
+            Maximum number of tracing steps per line before giving up/stopping.
+        max_iter : int, optional
+            Corrector (Newton) iterations allowed per spatial step.
+        value_tol : float, optional
+            Residual tolerance for the line condition (sqrt(s1^2 + s2^2)).
 
-        Returns:
-            List of (N, 3) trajectory arrays
+        Returns
+        -------
+        list of np.ndarray
+            List containing a trajectory array of shape (N_steps, 3) for each seed point.
         """
-        all_lines = []
-        for seed in starting_points:
-            line = self._trace_line_generic(
-                seed, 
-                self._stokes_C_val_jac_3d, ds, 
-                max_steps, max_iter, value_tol=value_tol
-            )
-            all_lines.append(line)
-        return all_lines
+        return self._batched_trace_lines(starting_points, self._stokes_C_val_jac_3d, ds, max_steps, max_iter, value_tol)
 
-    def _C_T_val_jac_3d(self, x, y, z):
+    def _C_T_val_jac_3d(self, E, J):
         """Returns [Re(E^2), Im(E^2)] and 2x3 Jacobian for Vector C^T lines."""
-        E, J = self._compute_field_and_jacobian_at_point(x, y, z)
-        # E is (3,), J is (3, 3) where columns are dx, dy, dz
-        
-        # Value: E^2 = E dot E
-        E2 = np.dot(E, E)
-        vals = np.array([np.real(E2), np.imag(E2)])
-        
-        # Gradient of E^2: grad(E.E) = 2 * (E . grad(E))
-        # This is a tensor contraction.
-        # d(E^2)/dx = 2 * (Ex*dEx/dx + Ey*dEy/dx + Ez*dEz/dx)
-        # This is equivalent to 2 * (E dot J_col)
-        
-        grad_psi_x = 2 * np.dot(E, J[:, 0])
-        grad_psi_y = 2 * np.dot(E, J[:, 1])
-        grad_psi_z = 2 * np.dot(E, J[:, 2])
-        
-        grad_re = np.array([np.real(grad_psi_x), np.real(grad_psi_y), np.real(grad_psi_z)])
-        grad_im = np.array([np.imag(grad_psi_x), np.imag(grad_psi_y), np.imag(grad_psi_z)])
-        
-        # Stack into 2x3 Jacobian
-        jac = np.vstack([grad_re, grad_im])
-        
-        return vals, jac
+        E2 = np.sum(E*E, axis=0)
+        dE2_dx, dE2_dy, dE2_dz = 2 * np.sum(E * J[:, 0, :], axis=0), 2 * np.sum(E * J[:, 1, :], axis=0), 2 * np.sum(E * J[:, 2, :], axis=0)
+        return np.stack([np.real(E2), np.imag(E2)], axis=-1), \
+               np.stack([np.stack([np.real(dE2_dx), np.real(dE2_dy), np.real(dE2_dz)], axis=-1),
+                         np.stack([np.imag(dE2_dx), np.imag(dE2_dy), np.imag(dE2_dz)], axis=-1)], axis=1)
 
     def trace_C_T_lines(self, starting_points, ds=0.05, max_steps=500, max_iter=10, value_tol=1e-6):
         """
-        Traces C^T lines in 3D from seed points (E·E=0 curves).
-        
-        Args:
-            starting_points: List of seed dicts from find_C_T_points() or (x,y,z) tuples
-            ds: Step size along tangent to curve
-            max_steps: Maximum number of tracing steps
-            max_iter: Corrector iterations per step
-            value_tol: Residual tolerance for E·E
-            
-        Returns:
-            List of (N, 3) trajectory arrays
-        """
-        all_lines = []
-        for seed in starting_points:
-            line = self._trace_line_generic(
-                seed, 
-                self._C_T_val_jac_3d, ds, 
-                max_steps, max_iter, value_tol
-            )
-            all_lines.append(line)
-        return all_lines
+        Traces C^T lines in 3D (curves where E·E = 0) originating from seed points.
 
-    def _L_T_val_jac_3d(self, x, y, z):
+        Parameters
+        ----------
+        starting_points : list of dict or list of tuple
+            Seed points. Can be dictionaries from `find_C_T_points()` or (x,y,z) tuples.
+        ds : float, optional
+            Step size spatial parameter for tracing along the tangent.
+        max_steps : int, optional
+            Maximum number of tracing steps per line.
+        max_iter : int, optional
+            Corrector (Newton) iterations allowed per spatial step.
+        value_tol : float, optional
+            Residual tolerance for the line condition (abs(E·E)).
+
+        Returns
+        -------
+        list of np.ndarray
+            List containing a trajectory array of shape (N_steps, 3) for each seed point.
         """
-        Returns values and Jacobian for Vector L-Lines (True Linear Polarization).
+        return self._batched_trace_lines(starting_points, self._C_T_val_jac_3d, ds, max_steps, max_iter, value_tol)
+
+    def _L_T_val_jac_3d(self, E, J):
+        """
+        Returns values and 2x3 Jacobian for Vector L-Lines (True Linear Polarization).
         
         Math Note:
         The condition N = Re(E) x Im(E) = 0 is codimension 2.
-        The components of N are dependent (N is orthogonal to E). 
-        Therefore, vanishing of any two components implies vanishing of the third.
-        
-        We solve for intersection of N_x = 0 and N_y = 0.
+        The components of N are dependent (N is orthogonal to E). Therefore, vanishing 
+        of any two components implies vanishing of the third.
+        We solve for the intersection of N_y = 0 and N_z = 0 to trace the curve.
         """
-        # 1. Get Fields and derivatives
-        E, J = self._compute_field_and_jacobian_at_point(x, y, z)
-        
-        # J columns are partials: [dE/dx, dE/dy, dE/dz]
-        dE_dx, dE_dy, dE_dz = J[:, 0], J[:, 1], J[:, 2]
-
         ReE, ImE = np.real(E), np.imag(E)
+        n_vec = np.cross(ReE, ImE, axis=0)
         
-        # Real/Imag parts of derivatives
-        ReE_x, ImE_x = np.real(dE_dx), np.imag(dE_dx)
-        ReE_y, ImE_y = np.real(dE_dy), np.imag(dE_dy)
-        ReE_z, ImE_z = np.real(dE_dz), np.imag(dE_dz)
-
-        # 2. Calculate N = Re(E) x Im(E)
-        n_vec = np.cross(ReE, ImE)
+        dn_dx = np.cross(np.real(J[:, 0, :]), ImE, axis=0) + np.cross(ReE, np.imag(J[:, 0, :]), axis=0)
+        dn_dy = np.cross(np.real(J[:, 1, :]), ImE, axis=0) + np.cross(ReE, np.imag(J[:, 1, :]), axis=0)
+        dn_dz = np.cross(np.real(J[:, 2, :]), ImE, axis=0) + np.cross(ReE, np.imag(J[:, 2, :]), axis=0)
         
-        # We return 2 constraints to satisfy the codimension-2 requirement.
-        vals = np.array([n_vec[1], n_vec[2]])
-
-        # 3. Jacobian of N        
-        # Partial derivatives of N vector with respect to x, y, z
-        dn_dx = np.cross(ReE_x, ImE) + np.cross(ReE, ImE_x)
-        dn_dy = np.cross(ReE_y, ImE) + np.cross(ReE, ImE_y)
-        dn_dz = np.cross(ReE_z, ImE) + np.cross(ReE, ImE_z)
-        
-        # Construct 2x3 Jacobian 
-        # Rows correspond to gradients of N_y and N_z
-        jac = np.array([
-            [dn_dx[1], dn_dy[1], dn_dz[1]],
-            [dn_dx[2], dn_dy[2], dn_dz[2]],
-        ])
-
-        return vals, jac
+        return np.stack([n_vec[1], n_vec[2]], axis=-1), \
+               np.stack([np.stack([dn_dx[1], dn_dy[1], dn_dz[1]], axis=-1),
+                         np.stack([dn_dx[2], dn_dy[2], dn_dz[2]], axis=-1)], axis=1)
 
     def trace_L_lines(self, starting_points, ds=0.05, max_steps=500, max_iter=10, value_tol=1e-6):
         """
-        Traces L^T lines in 3D from seed points (Re(E) x Im(E)=0 curves).
+        Traces L^T lines in 3D (curves where Re(E) x Im(E) = 0) originating from seed points.
 
-        Args:
-            starting_points: List of seed dicts from find_L_T_points() or (x,y,z) tuples
-            ds: Step size along tangent to cruve
-            max_steps: Maximum number of tracing steps
-            max_iter: Corrector iterations per step
-            value_tol: Residual tolerance for normal vector
-            
-        Returns:
-            List of (N, 3) trajectory arrays
+        Parameters
+        ----------
+        starting_points : list of dict or list of tuple
+            Seed points. Can be dictionaries from `find_L_T_points()` or (x,y,z) tuples.
+        ds : float, optional
+            Step size spatial parameter for tracing along the tangent.
+        max_steps : int, optional
+            Maximum number of tracing steps per line.
+        max_iter : int, optional
+            Corrector (Newton) iterations allowed per spatial step.
+        value_tol : float, optional
+            Residual tolerance for the line condition (abs(N_y) and abs(N_z)).
+
+        Returns
+        -------
+        list of np.ndarray
+            List containing a trajectory array of shape (N_steps, 3) for each seed point.
         """
-        all_lines = []
-        for seed in starting_points:
-            line = self._trace_line_generic(
-                seed, 
-                self._L_T_val_jac_3d, ds, 
-                max_steps, max_iter, value_tol
-            )
-            all_lines.append(line)
-        return all_lines
-
+        return self._batched_trace_lines(starting_points, self._L_T_val_jac_3d, ds, max_steps, max_iter, value_tol)

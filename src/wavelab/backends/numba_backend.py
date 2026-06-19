@@ -11,15 +11,6 @@ except ImportError:
     prange = range
     has_numba = False
 
-try:
-    from tqdm import tqdm
-except ImportError:
-    def tqdm(total=None, disable=False, desc=None, **kwargs):
-        class DummyPbar:
-            def update(self, n): pass
-            def close(self): pass
-        return DummyPbar()
-
 K_ARGS = {'nopython': True, 'parallel': True, 'fastmath': True, 'cache': True}
 
 @jit(**K_ARGS)
@@ -226,14 +217,13 @@ class NumbaMethods:
     def _allocate_arrays(self, shape):
         return tuple(np.empty((3,*shape), dtype=np.complex128) for _ in range(5))
         
-    def compute_cloud(self, x, y, z, t, need_b=True, need_derivs=True, progress_bar=False):
+    def compute_cloud(self, x, y, z, t, need_b=True, need_derivs=True, progress_callback=None):
         total_points = len(x)
         batch_size = self.max_batch_size
-        if progress_bar: 
-            batch_size = min(self.max_batch_size, max(1, total_points // 5))  
+        if progress_callback: 
+            batch_size = min(self.max_batch_size, max(1, total_points // 5))
 
         E, B, dx, dy, dz = self._allocate_arrays((total_points,))
-        pbar = tqdm(total=total_points, disable=not progress_bar, desc="Cloud", unit="pts")
         
         for i in range(0, total_points, batch_size):
             end = min(i + batch_size, total_points)
@@ -243,22 +233,18 @@ class NumbaMethods:
                 need_b, need_derivs, 
                 E[:, i:end], B[:, i:end], dx[:,i:end], dy[:, i:end], dz[:, i:end]
             )
-            pbar.update(end - i)
+            if progress_callback: progress_callback(end - i) 
             
-        pbar.close()
         D = (dx, dy, dz) if need_derivs else (None, None, None)
         B = B if need_b else None
 
         return E, D, B
 
-    def compute_grid(self, x_vec, y_vec, z, t, need_b=True, need_derivs=True, progress_bar=False):
+    def compute_grid(self, x_vec, y_vec, z, t, need_b=True, need_derivs=True, progress_callback=None):
         nx, ny = len(x_vec), len(y_vec)
-        rows_per_batch = self.max_batch_size
-        if progress_bar:
-            rows_per_batch = min(self.max_batch_size, max(1, ny // 5))
+        rows_per_batch = max(1, self.max_batch_size // nx)
             
         E, B, dx, dy, dz = self._allocate_arrays((ny, nx))
-        pbar = tqdm(total=ny, disable=not progress_bar, desc="Grid", unit="rows")
         
         for i in range(0, ny, rows_per_batch):
             end = min(i + rows_per_batch, ny)
@@ -268,9 +254,8 @@ class NumbaMethods:
                 need_b, need_derivs, 
                 E[:, i:end, :], B[:, i:end, :], dx[:, i:end, :], dy[:, i:end, :], dz[:, i:end, :]
             )
-            pbar.update(end - i)
+            if progress_callback: progress_callback(end - i)
             
-        pbar.close()
         D = (dx, dy, dz) if need_derivs else (None, None, None)
         B = B if need_b else None
 
@@ -284,47 +269,3 @@ class NumbaMethods:
         if not need_derivs: D = (None, None, None)
         if not need_b: B = None
         return E, D, B
-
-def run_benchmark():
-    num_waves = 5000
-
-    @dataclass
-    class beam:
-        k = np.random.random((3, num_waves))
-        c = np.random.random((3, num_waves))
-        w = np.linalg.norm(k, axis=0)
-        inv_w = 1.0 / w
-
-    grid_size = 100 
-    
-    interface = NumbaMethods(beam)
-    
-    x_vec, y_vec = np.linspace(-5, 5, grid_size), np.linspace(-5, 5, grid_size)
-    X, Y = np.meshgrid(x_vec, y_vec)
-    x_arr, y_arr, z_arr = X.ravel(), Y.ravel(), np.zeros_like(X.ravel())
-    
-    print(f"Numba Implementation | Waves: {num_waves} | Points: {len(x_arr):,}")
-    
-    # Warmups
-    _, _, _ = interface.compute_grid(x_vec[:2], y_vec[:2], 0.0, 0.0)
-    _, _, _ = interface.compute_cloud(x_arr[:4], y_arr[:4], z_arr[:4], 0.0)
-    _, _, _ = interface.compute_point(1,1,1,1)
-    
-    print("\nStarting Grid benchmark...")
-    t0 = time.perf_counter()
-    interface.compute_grid(x_vec, y_vec, 0.0, 0.0, progress_bar=True)
-    print(f"Grid time: {time.perf_counter() - t0:.4f}s")
-    
-    print("\nStarting Cloud benchmark...")
-    t0 = time.perf_counter()
-    interface.compute_cloud(x_arr, y_arr, z_arr, 0.0, progress_bar=True)
-    print(f"Cloud time: {time.perf_counter() - t0:.4f}s")
-
-    print("\nStarting Point benchmark...")
-    t0 = time.perf_counter()
-    interface.compute_point(1,1,1,1)
-    print(f"point time: {time.perf_counter() - t0:.4f}s")
-
-
-if __name__ == "__main__":
-    run_benchmark()

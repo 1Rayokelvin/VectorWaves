@@ -49,11 +49,14 @@ class Beam:
     c: np.ndarray       
     w: np.ndarray       
     inv_w: np.ndarray   
-    a: np.ndarray       
+    a: np.ndarray 
 
     # =========================================================================
     #                       PHYSICS PROPERTIES
     # =========================================================================
+
+    def __repr__(self) -> str:
+        return f"<Beam: {self.num_modes:,} modes | Power: {self.total_power:.2e}>"
 
     @cached_property
     def num_modes(self) -> int:
@@ -116,7 +119,77 @@ class Beam:
         strength of the beam. 
         """
         return float(np.sum(self.mode_irradiances)) 
-       
+
+    @cached_property
+    def mode_weights(self) -> np.ndarray:
+        """Normalized power contribution of each mode (sums to 1)."""
+        if self.total_power < 1e-15:
+            return np.zeros_like(self.mode_irradiances)
+        return self.mode_irradiances / self.total_power
+
+    @cached_property
+    def mean_direction(self) -> np.ndarray:
+        """Intensity-weighted mean propagation direction (3,)."""
+        mean_k = np.sum(self.k_hat * self.mode_weights[np.newaxis, :], axis=1)
+        mean_norm = np.linalg.norm(mean_k)
+        
+        if mean_norm < 1e-5:
+            # Fallback: Use the axis of the mode with the highest irradiance
+            max_idx = np.argmax(self.mode_irradiances)
+            return self.k_hat[:, max_idx]
+            
+        return mean_k / mean_norm
+
+    @cached_property
+    def rms_divergence(self) -> float:
+        """RMS divergence half-angle in radians."""
+        if self.total_power < 1e-15: return 0.0
+        
+        cos_thetas = np.clip(np.dot(self.mean_direction, self.k_hat), -1.0, 1.0)
+        thetas = np.arccos(cos_thetas)
+        return np.sqrt(np.sum(self.mode_weights * thetas**2))
+
+    @cached_property
+    def wavelength_spectrum(self) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Groups plane waves by physical wavelength using a tight relative tolerance.
+        
+        Returns
+        -------
+        unique_wls : np.ndarray
+            1D array of unique physical wavelengths in the beam.
+        spectra : np.ndarray
+            1D array of the integrated irradiance matching each unique wavelength.
+        """
+        if self.num_modes == 0:
+            return np.array([]), np.array([])
+            
+        wls = self.wavelengths
+        sort_idx = np.argsort(wls)
+        sorted_wls = wls[sort_idx]
+        sorted_irrad = self.mode_irradiances[sort_idx]
+        
+        unique_wls = []
+        spectra = []
+        
+        current_wl = sorted_wls[0]
+        current_sum = sorted_irrad[0]
+        
+        for i in range(1, len(sorted_wls)):
+            wl = sorted_wls[i]
+            if np.isclose(wl, current_wl, rtol=1e-6, atol=0.0):
+                current_sum += sorted_irrad[i]
+            else:
+                unique_wls.append(current_wl)
+                spectra.append(current_sum)
+                current_wl = wl
+                current_sum = sorted_irrad[i]
+                
+        unique_wls.append(current_wl)
+        spectra.append(current_sum)
+        
+        return np.array(unique_wls), np.array(spectra)
+
     # =========================================================================
     #                       USER TOOLS & VISUALIZATION
     # =========================================================================
@@ -127,47 +200,42 @@ class Beam:
         print(f"Modes          : {self.num_modes:,}")
         print(f"Total Power    : {self.total_power:.2e}")
         
-        wls = np.unique(np.round(self.wavelengths, 5))
-        if len(wls) == 1:
-            print(f"Wavelength     : {wls[0]} (Monochromatic)")
-        elif len(wls) < 10:
-            print(f"Wavelengths    : {wls} ({len(wls)} distinct lines)")
+        unique_wls, _ = self.wavelength_spectrum
+        if len(unique_wls) == 1:
+            # Use .3g to automatically handle scientific notation nicely
+            print(f"Wavelength     : {unique_wls[0]:.3g} (Monochromatic)")
+        elif len(unique_wls) < 10:
+            wls_str = ", ".join([f"{w:.3g}" for w in unique_wls])
+            print(f"Wavelengths    : [{wls_str}] ({len(unique_wls)} distinct lines)")
         else:
-            print(f"Wavelengths    : {np.min(wls)} to {np.max(wls)} (Broadband)")
+            print(f"Wavelengths    : {np.min(unique_wls):.3g} to {np.max(unique_wls):.3g} (Broadband)")
             
         if self.total_power > 1e-15:
-            weights = self.mode_irradiances / self.total_power
-            mean_k = np.sum(self.k_hat * weights[np.newaxis, :], axis=1)
-            axis_norm = np.linalg.norm(mean_k)
-            
-            if axis_norm > 0:
-                mean_axis = mean_k / axis_norm
-                cos_thetas = np.clip(np.dot(mean_axis, self.k_hat), -1.0, 1.0)
-                thetas = np.arccos(cos_thetas)
-                rms_theta = np.sqrt(np.sum(weights * thetas**2))
-                
-                print(f"Mean Axis      : [{mean_axis[0]:.3f}, {mean_axis[1]:.3f}, {mean_axis[2]:.3f}]")
-                print(f"RMS Divergence : ~{np.degrees(rms_theta):.2f} degrees half-angle")
+            md = self.mean_direction
+            print(f"Mean Axis      : [{md[0]:.3f}, {md[1]:.3f}, {md[2]:.3f}]")
+            print(f"RMS Divergence : ~{np.degrees(self.rms_divergence):.2f} degrees half-angle")
 
     def plot_kspace_3d(
-            self,  cmap='inferno', plot_type:Literal['colored_vectors','colored_sphere']='colored_vectors'
+            self,  cmap='inferno', show: bool =True,
+            plot_type:Literal['colored_vectors','colored_sphere']='colored_vectors'
             ):
         """
-        Renders an interactive 3D visualization of the wavevectors, amplitudes using PyVista..
+        Renders an interactive 3D visualization of the wavevectors and amplitudes.
 
         Parameters
         ----------
-        cmap : optional
-            Colormap for mode amplitudes (default 'inferno').
+        cmap : str, optional
+            Colormap for mode amplitudes (default is 'inferno').
         plot_type : Literal['colored_vectors', 'colored_sphere'], optional
-            'colored_vectors': arrows along k_hats colored by amplitude.
-            'colored_sphere': unit sphere colored by amplitudes for a smooth heatmap.
-            Default is colored_vectors.
+            'colored_vectors' plots arrows along k_hat directions.
+            'colored_sphere' plots a continuous heatmap mapped to a unit sphere.
+        show: bool, optional
+            If True, displays the plot. Default is True.
 
         Returns
         -------
-        pyvista.Plotter
-            Plotter object for further manipulation.
+        pyvista.Plotter or None
+            Plotter object for further manipulation, or None if PyVista is missing.
         """
         try:
             import pyvista as pv
@@ -207,8 +275,8 @@ class Beam:
             
         else: raise ValueError("plot_type must be colored_sphere or colored_vectors")
 
-        plotter.show()
-        
+        if show: plotter.show()
+
         return plotter
     
     def plot_k_perp_profile(self, normal: Optional[Tuple[float, float, float]] = None, show: bool = True):
@@ -222,8 +290,13 @@ class Beam:
             to find the intensity-weighted mean direction. If the beam is 
             perfectly symmetric (e.g., a standing wave), it falls back to the 
             direction of the dominant mode.
-        show: bool
-            If true, displays the plot.
+        show: bool, optional
+            If True, displays the plot. Default is True.
+
+        Returns
+        -------
+        Tuple[matplotlib.figure.Figure, matplotlib.axes.Axes] or None
+
         """
         try:
             import matplotlib.pyplot as plt
@@ -236,41 +309,37 @@ class Beam:
             norm = np.linalg.norm(normal_vec)
             normal_vec = normal_vec / norm if norm > 0 else np.array([0., 0., 1.])
         else:
-            # 1. Calculate weighted mean direction
-            weights = self.mode_irradiances / self.total_power
-            mean_k = np.sum(self.k_hat * weights[np.newaxis, :], axis=1)
-            mean_norm = np.linalg.norm(mean_k)
+            normal_vec = self.mean_direction # <--- Leverages new property!
             
-            # 2. Safety check for zero-mean
-            if mean_norm < 1e-5:
-                # Fallback: Use the axis of the mode with the highest irradiance
-                max_idx = np.argmax(self.mode_irradiances)
-                normal_vec = self.k_hat[:, max_idx]
-            else:
-                normal_vec = mean_k / mean_norm
-            
-        # 3. Compute k_perp relative to the identified normal
-        # k_perp = |k - (k·n)n|
         k_parallel_mags = np.dot(normal_vec, self.k)
         k_parallel_vecs = normal_vec[:, np.newaxis] * k_parallel_mags
         k_perp = np.linalg.norm(self.k - k_parallel_vecs, axis=0)
         
         fig, ax = plt.subplots(figsize=(7, 4))
-        
         ax.scatter(k_perp, self.amplitudes, s=15)
         ax.set_xlabel(r'Transverse Wavenumber $k_\perp$')
         ax.set_ylabel('Mode Amplitude')
-        ax.set_title(f"K-Space Tranverse Profile about\nNormal: [{normal_vec[0]:.2f}, {normal_vec[1]:.2f}, {normal_vec[2]:.2f}]")
+        ax.set_title(f"K-Space Transverse Profile about\nNormal: [{normal_vec[0]:.2f}, {normal_vec[1]:.2f}, {normal_vec[2]:.2f}]")
         ax.grid(True, alpha=0.2)
-        ax.set_ybound(lower=0,upper=np.max(self.amplitudes)*1.2)
+        ax.set_ylim(0, np.max(self.amplitudes)*1.2)
         plt.tight_layout()
         
-        if show:
-            plt.show()
+        if show: plt.show()
         return fig, ax    
     
     def plot_wavelength_spectrum(self, show: bool = True):
-        """Plots the intensity-weighted wavelength spectrum."""
+        """
+        Plots the intensity-weighted wavelength spectrum.
+
+        Parameters
+        ----------
+        show: bool, optional
+            If True, displays the plot. Default is True.
+
+        Returns
+        -------
+        Tuple[matplotlib.figure.Figure, matplotlib.axes.Axes] or None
+        """
         try:
             import matplotlib.pyplot as plt
         except ImportError:
@@ -278,14 +347,19 @@ class Beam:
             return None
             
         fig, ax = plt.subplots(figsize=(6, 4))
-        wls = np.round(self.wavelengths, decimals=5)
-        unique_wls = np.unique(wls)
+        unique_wls, spectra = self.wavelength_spectrum
         
         if len(unique_wls) == 1:
-            ax.axvline(unique_wls[0], color='indigo', lw=3, label=fr'$\lambda={unique_wls[0]}$')
+            ax.axvline(unique_wls[0], color='indigo', lw=3, label=fr'$\lambda={unique_wls[0]:.3g}$')
+            ax.legend()
         else:
-            spectra = [np.sum(self.mode_irradiances[wls == wl]) for wl in unique_wls]
-            ax.bar(unique_wls, spectra, width=max(np.ptp(unique_wls)*0.02, 1e-3), color='indigo')
+            # Bar width: 2% of the spectrum range, or 0.1% of the smallest wavelength
+            ptp = np.ptp(unique_wls)
+            bar_width = ptp * 0.02 if ptp > 0 else unique_wls[0] * 1e-3
+            ax.bar(unique_wls, spectra, width=bar_width, color='indigo')
+            
+        # Optional: Format X-axis for scientific notation if very small
+        ax.ticklabel_format(style='sci', axis='x', scilimits=(-3, 3))
             
         ax.set_xlabel("Wavelength")
         ax.set_ylabel("Intensity")
@@ -308,13 +382,35 @@ class BeamMaker:
         """
         Executes the generation pipeline to produce a superposition of plane waves.
         
+        This method aggregates configurations (wavelength, angular sampling, 
+        stochastic noise, and k-space profiles) to create a fully quantified 
+        electromagnetic beam.
+
         Returns
         -------
         Beam
             Precomputed beam object ready for evaluation in the FieldEngine.
-        """
+            
+        Raises
+        ------
+        ValueError
+            If `num_modes` is less than 1.
+        ValueError
+            If the generated beam evaluates to a total power near zero (< 1e-15). 
+            This typically occurs when the k-space profile evaluates to zero 
+            across all sampled angular grid points (e.g., mismatch between 
+            `beam_axis` and the profile's non-zero domain).
+        """        
+        modes = self.config.source.num_modes
+        if modes < 1:
+            raise ValueError(f"num_modes must be >= 1. Got: {modes}.")
+        elif modes == 1:
+            warnings.warn("num_modes is 1. Generating a pure single plane wave.")
+        elif modes < 10:
+            warnings.warn(f"num_modes ({modes}) is very low. Beam profile may be under-sampled.")
+
         if self.config.verbose:
-            print(f"--- Starting Beam Generation (Modes: {self.config.source.num_modes}) ---")
+            print(f"--- Starting Beam Generation (Modes: {modes}) ---")
 
         wls = np.atleast_1d(self.config.source.wavelength)
         num_wls = len(wls)
@@ -359,8 +455,33 @@ class BeamMaker:
             inv_w_out = 1.0 / w_out
         inv_w_out[w_out == 0] = 0
 
-        return Beam(k=k_out, c=c_out, w=w_out, inv_w=inv_w_out, a=a_out)
+        beam = Beam(k=k_out, c=c_out, w=w_out, inv_w=inv_w_out, a=a_out)
+        if beam.total_power < 1e-15:
+            raise ValueError(
+                "Generated beam has essentially zero power (total_power < 1e-15). "
+                "Check your k-space profile, beam_axis, and theta_max. The angular "
+                "sampling grid may have completely missed the profile's non-zero region."
+            )
+        else:
+            axis = np.array(self.config.source.beam_axis)
+            cos_thetas = np.dot(axis, beam.k_hat)
+            thetas = np.arccos(np.clip(cos_thetas, -1.0, 1.0))
+            actual_theta_max = self.config.source.theta_max
+            if actual_theta_max < (np.pi / 2 - 1e-4):
+                # Check the intensity of modes within the outer 5% of the sampled cone
+                edge_mask = thetas > (0.95 * actual_theta_max)
+                if np.any(edge_mask):
+                    max_edge_amp = np.max(beam.amplitudes[edge_mask])
+                    peak_amp = np.max(beam.amplitudes)
+                    
+                    if max_edge_amp > 0.01 * peak_amp:
+                        warnings.warn(
+                            f"Beam Clipping Detected: The k-space spectrum is still active at the \
+                                boundary of theta_max ({np.degrees(actual_theta_max):.1f}°). "
+                        )
 
+        return beam
+    
     def _generate_monochromatic_batch(self, wavelength: float, k_hats: np.ndarray, 
                                       d_omega: np.ndarray, weight: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Internal helper for generating modes at a specific wavelength line."""
@@ -372,14 +493,15 @@ class BeamMaker:
         px, py = self.config.source.pol_vect
         
         # Handle Randomized Polarization
+        pol_rot_max = self.config.source.randomize.pol_rot_max
         if self.config.source.randomize.pol_state:
             temp = self._sample_sphere_fib(N, (0, 0, 1), np.pi)
             s1, s2, s3 = temp[0][:, 0], temp[0][:, 1], temp[0][:, 2]
             P = np.sqrt((1.0+s1)/2.0)[:,None]*e1 + (np.sqrt((1.0-s1)/2.0)*np.exp(1j*np.arctan2(s3, s2)))[:,None]*e2
-        elif self.config.source.randomize.pol_rot:
-            angles = self.rng.uniform(0, 2*np.pi, size=N)
+        elif pol_rot_max > 0:
+            angles = self.rng.uniform(-pol_rot_max, pol_rot_max, size=N)
             c_a, s_a = np.cos(angles), np.sin(angles)
-            P = (c_a*px - s_a*py)[:,None]*e1 + (s_a*px + c_a*py)[:,None]*e2
+            P = (c_a*px - s_a*py)[:, None]*e1 + (s_a*px + c_a*py)[:, None]*e2
         else:
             P = px * e1 + py * e2
 
@@ -391,8 +513,9 @@ class BeamMaker:
             amps = np.array([kspace_cfg.profile(k, **kspace_cfg.params) for k in ks], dtype=complex)
 
         # --- Stochastic Noise ---
-        if self.config.source.randomize.phase:
-            amps *= np.exp(1j * 2 * np.pi * self.rng.random(N))
+        phase_max = self.config.source.randomize.phase_max
+        if phase_max > 0:
+            amps *= np.exp(1j * self.rng.uniform(-phase_max, phase_max, size=N))
         if self.config.source.randomize.amplitude:
             amps *= (self.rng.normal(0,1,N) + 1j*self.rng.normal(0,1,N)) * 0.7071
 
