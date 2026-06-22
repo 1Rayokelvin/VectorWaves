@@ -1,16 +1,21 @@
-VectorWaves is a Python library for constructing and analyzing electromagnetic fields through discrete plane-wave expansions.
-
-It provides tools for generating structured optical fields, evaluating fully three-dimensional electric and magnetic fields, and analyzing polarization singularities such as C-points, Cᵀ-points, and Lᵀ-points.
+VectorWaves provides a framework for generating, computing, and analyzing fully three-dimensional electromagnetic fields through discrete plane-wave expansions.
 
 ## Installation
-
 ```
 pip install vectorwaves
 ```
 
+## Features
+
+- Physics-oriented hierarchical configuration system
+- Monochromatic sources including Gaussian and Laguerre-Gaussian beams, with support for custom source definitions
+- Polychromatic sources with Gaussian, Lorentzian, and custom spectral distributions
+- Polarization singularity analysis (C, Cᵀ, and Lᵀ points, including their 3D counterparts)
+- GPU acceleration through CuPy
+
 ## Quick Example
 
-```
+```python
 import matplotlib.pyplot as plt
 import vectorwaves as vw
 
@@ -28,19 +33,8 @@ plt.imshow(result.intensity_E, cmap="magma")
 plt.title("LG beam Intensity profile")
 plt.show()
 ```
-![LG beam intensity](https://github.com/1Rayokelvin/VectorWaves/blob/main/docs/images/LG_beam.png)
+Output
 
-## Features
+![LG beam Intensity](https://github.com/1Rayokelvin/VectorWaves/blob/main/docs/images/LG_beam.png?raw=true)
 
-- Structured optical field generation
-- Monochromatic and polychromatic sources
-- Three-dimensional electromagnetic field evaluation
-- GPU acceleration through CuPy
-- Polarization singularity analysis
-
-## Documentation
-
-For tutorials, examples, API documentation, and the underlying physics, see:
-
-* GitHub: https://github.com/1RayOfKelvin/VectorWaves
-* Documentation: https://1rayokelvin.github.io/VectorWaves
+For tutorials and examples, please refer to [documentation](https://1rayokelvin.github.io/VectorWaves). Source code is available on [GitHub](https://github.com/1Rayokelvin/VectorWaves/).
