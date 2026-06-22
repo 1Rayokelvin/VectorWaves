@@ -1,6 +1,6 @@
 # Core Physics Engine
 
-::: wavelab.beam_stuff.BeamMaker
-::: wavelab.beam_stuff.Beam
-::: wavelab.engine_stuff.FieldEngine
-::: wavelab.engine_stuff.FieldResult
+::: vectorwaves.beam_stuff.BeamMaker
+::: vectorwaves.beam_stuff.Beam
+::: vectorwaves.engine_stuff.FieldEngine
+::: vectorwaves.engine_stuff.FieldResult

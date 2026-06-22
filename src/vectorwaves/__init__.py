@@ -1,16 +1,12 @@
 """
-WaveLab - Optical Field Simulations and Topological Singularity Analysis
+VectorWaves - A Python library for electromagnetic field simulations using plane wave expansion.
 ==========================================================================
 
-A Python library for electromagnetic field simulations using plane wave expansion.
-
-Public API
-----------
 Main workflow:
-    >>> from wavelab import get_config, setup_engine
-    >>> config = get_config()
+    >>> import vectorwaves as vw
+    >>> config = vw.get_config()
     >>> config.source.num_modes = 10000
-    >>> expt = setup_engine(config)
+    >>> expt = vw.setup_engine(config)
     >>> result = expt.compute_on_op(z=0.0)
 
 Author: Mayank Soni

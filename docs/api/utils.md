@@ -1,3 +1,3 @@
 # Utilities
 
-::: wavelab.utils
+::: vectorwaves.utils

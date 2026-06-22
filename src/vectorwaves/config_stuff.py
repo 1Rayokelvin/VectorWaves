@@ -2,7 +2,7 @@
 Configuration & Experiment Schema
 =================================
 
-The foundation of the WaveLab pipeline. This module defines the strict data 
+The foundation of the VectorWaves pipeline. This module defines the strict data 
 structures (`Config`) used to describe physical parameters of beam, 
 and observation plane geometry.
 
@@ -664,7 +664,7 @@ class SourceConfig(SerializableConfig):
 @dataclass(slots=True)
 class Config(SerializableConfig):
     """
-    Main WaveLab Configuration.
+    Main VectorWaves Configuration.
     
     This is the root tree for initializing an experiment. It manages the global 
     backend, the observation plane settings, and the complex light source properties.
@@ -732,7 +732,7 @@ def get_config() -> Config:
 
 def load_config(filename: str) -> Config:
     """
-    Load a WaveLab configuration from a JSON file.
+    Load a VectorWaves configuration from a JSON file.
     
     Parameters
     ----------

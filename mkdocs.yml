@@ -1,6 +1,6 @@
-site_name: WaveLab
+site_name: VectorWaves
 site_description: 3D Optical Field Simulations and Singularity Tracking
-repo_url: https://github.com/1Rayokelvin/WaveLab
+repo_url: https://github.com/1Rayokelvin/VectorWaves
 
 theme:
   name: material

@@ -2,7 +2,7 @@
 Field Engine & Results
 ======================
 
-The final stage of the WaveLab pipeline. This module provides the `FieldEngine`, 
+The final stage of the VectorWaves pipeline. This module provides the `FieldEngine`, 
 which orchestrates the spatial evaluation of electromagnetic fields by routing 
 precomputed `Beam` objects to hardware backends (NumPy, Numba or CuPy).
 

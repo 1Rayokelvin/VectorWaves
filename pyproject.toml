@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "wavelab"
+name = "vectorwaves"
 dynamic = ["version"]
 description = "Plane Wave Superposition toolkit"
 authors = [
@@ -39,7 +39,7 @@ gpu = [
 ]
 
 [tool.setuptools.dynamic]
-version = { attr = "wavelab.version.current_version_str" }
+version = { attr = "vectorwaves.version.current_version_str" }
 
 [tool.setuptools]
 package-dir = { "" = "src" }

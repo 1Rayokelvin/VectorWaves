@@ -1,3 +1,3 @@
 # Topological Singularities
 
-::: wavelab.singularities.SingularityFinder
+::: vectorwaves.singularities.SingularityFinder

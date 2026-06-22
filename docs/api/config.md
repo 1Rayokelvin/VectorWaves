@@ -1,8 +1,8 @@
 # Configuration API
 
-::: wavelab.config_stuff.Config
-::: wavelab.config_stuff.SourceConfig
-::: wavelab.config_stuff.OpConfig
-::: wavelab.config_stuff.KSpaceConfig
-::: wavelab.config_stuff.PolychromaticConfig
-::: wavelab.config_stuff.RandomizeConfig
+::: vectorwaves.config_stuff.Config
+::: vectorwaves.config_stuff.SourceConfig
+::: vectorwaves.config_stuff.OpConfig
+::: vectorwaves.config_stuff.KSpaceConfig
+::: vectorwaves.config_stuff.PolychromaticConfig
+::: vectorwaves.config_stuff.RandomizeConfig
