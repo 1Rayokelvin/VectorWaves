@@ -646,24 +646,8 @@
       <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
       
       
+        
       
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Physics Details
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
       
       <a href="./" class="md-nav__link md-nav__link--active">
         
@@ -681,45 +665,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#conventions" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Conventions
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#methods" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Methods
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
       
     </li>
   
@@ -745,9 +690,7 @@
   
 
 
-  <h1>Physics Details</h1>
-
-<h2 id="conventions">Conventions</h2>
+<h1 id="conventions">Conventions</h1>
 <p><strong>Units and phase.</strong> Natural units, <code>c = 1</code>. The time-harmonic phase accumulated by each plane-wave mode is</p>
 <pre><code>phase = kx·x + ky·y + kz·z − ω·t
 </code></pre>
@@ -759,7 +702,7 @@
 <p>For amplitude randomization (<code>randomize.amplitude</code>), each mode's amplitude is multiplied by a unit-variance complex Gaussian draw scaled by <code>1/sqrt(2)</code>, preserving the expected total power while adding speckle statistics.</p>
 <p><code>intensity_E</code> is real-space: it is the squared field magnitude evaluated point by point on the observation plane, carrying the power normalization set during beam construction. It is not a k-space quantity.</p>
 <hr />
-<h2 id="methods">Methods</h2>
+<h1 id="methods">Methods</h1>
 <p><strong>Fibonacci-sphere sampling.</strong> <code>BeamMaker</code> samples plane-wave wavevectors over the source's solid angle using a Fibonacci-sphere quadrature, which gives near-uniform angular density across the sphere without the polar clustering of a latitude/longitude grid. The accuracy of any field quantity scales with <code>config.source.num_modes</code>; for smooth structured beams a few thousand modes are typically sufficient, while speckle or highly non-paraxial sources require more.</p>
 <p><strong>Polarization transport (Rodrigues rotation).</strong> The base Jones vector <code>(px, py)</code> is defined on the beam axis. <code>BeamMaker</code> carries it to each plane-wave mode via a Rodrigues rotation that takes the beam axis unit vector to the mode's <code>k_hat</code>. This means every mode in the angular spectrum inherits a geometrically consistent polarization state, and no per-mode polarization specification is needed. Per-mode polarization vectors can be recovered after construction as <code>c / a</code> (vector amplitude divided by scalar amplitude).</p>
 <p><strong>Singularity conditions and their physical meaning.</strong></p>
