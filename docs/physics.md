@@ -1,4 +1,4 @@
-## Conventions
+# Conventions
 
 **Units and phase.** Natural units, `c = 1`. The time-harmonic phase accumulated by each plane-wave mode is
 
@@ -22,7 +22,7 @@ For amplitude randomization (`randomize.amplitude`), each mode's amplitude is mu
 
 ---
 
-## Methods
+# Methods
 
 **Fibonacci-sphere sampling.** `BeamMaker` samples plane-wave wavevectors over the source's solid angle using a Fibonacci-sphere quadrature, which gives near-uniform angular density across the sphere without the polar clustering of a latitude/longitude grid. The accuracy of any field quantity scales with `config.source.num_modes`; for smooth structured beams a few thousand modes are typically sufficient, while speckle or highly non-paraxial sources require more.
 
