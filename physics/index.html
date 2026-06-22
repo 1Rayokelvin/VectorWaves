@@ -12,25 +12,23 @@
       
       
       
-        <link rel="next" href="tutorials/Scalar_tutorial/">
-      
       
         
       
       
-      <link rel="icon" href="assets/images/favicon.png">
+      <link rel="icon" href="../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
-        <title>VectorWaves</title>
+        <title>Physics Details - VectorWaves</title>
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
       
         
-        <link rel="stylesheet" href="assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -49,15 +47,15 @@
       
     
     
-      <link rel="stylesheet" href="assets/_mkdocstrings.css">
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
     
-      <link rel="stylesheet" href="css/ansi-colours.css">
+      <link rel="stylesheet" href="../css/ansi-colours.css">
     
-      <link rel="stylesheet" href="css/jupyter-cells.css">
+      <link rel="stylesheet" href="../css/jupyter-cells.css">
     
-      <link rel="stylesheet" href="css/pandas-dataframe.css">
+      <link rel="stylesheet" href="../css/pandas-dataframe.css">
     
-    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -80,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#vectorwaves-documentation" class="md-skip">
+        <a href="#physics-details" class="md-skip">
           Skip to content
         </a>
       
@@ -94,7 +92,7 @@
 
 <header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="." title="VectorWaves" class="md-header__button md-logo" aria-label="VectorWaves" data-md-component="logo">
+    <a href=".." title="VectorWaves" class="md-header__button md-logo" aria-label="VectorWaves" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -114,7 +112,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Home
+              Physics Details
             
           </span>
         </div>
@@ -197,11 +195,9 @@
   
   
   
-    
   
-  
-    <li class="md-tabs__item md-tabs__item--active">
-      <a href="." class="md-tabs__link">
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
         
   
   
@@ -222,7 +218,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="tutorials/Scalar_tutorial/" class="md-tabs__link">
+        <a href="../tutorials/Scalar_tutorial/" class="md-tabs__link">
           
   
   
@@ -242,7 +238,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="api/config/" class="md-tabs__link">
+        <a href="../api/config/" class="md-tabs__link">
           
   
   
@@ -278,7 +274,7 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted md-nav--integrated" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="." title="VectorWaves" class="md-nav__button md-logo" aria-label="VectorWaves" data-md-component="logo">
+    <a href=".." title="VectorWaves" class="md-nav__button md-logo" aria-label="VectorWaves" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -305,37 +301,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Home
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="." class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
         
   
   
@@ -351,59 +320,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#tutorials" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Tutorials
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#physics" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Physics
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#api-reference" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        API Reference
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -467,7 +383,7 @@
   
   
     <li class="md-nav__item">
-      <a href="tutorials/Scalar_tutorial/" class="md-nav__link">
+      <a href="../tutorials/Scalar_tutorial/" class="md-nav__link">
         
   
   
@@ -495,7 +411,7 @@
   
   
     <li class="md-nav__item">
-      <a href="tutorials/Vector_tutorial/" class="md-nav__link">
+      <a href="../tutorials/Vector_tutorial/" class="md-nav__link">
         
   
   
@@ -582,7 +498,7 @@
   
   
     <li class="md-nav__item">
-      <a href="api/config/" class="md-nav__link">
+      <a href="../api/config/" class="md-nav__link">
         
   
   
@@ -610,7 +526,7 @@
   
   
     <li class="md-nav__item">
-      <a href="api/core/" class="md-nav__link">
+      <a href="../api/core/" class="md-nav__link">
         
   
   
@@ -638,7 +554,7 @@
   
   
     <li class="md-nav__item">
-      <a href="api/singularities/" class="md-nav__link">
+      <a href="../api/singularities/" class="md-nav__link">
         
   
   
@@ -666,7 +582,7 @@
   
   
     <li class="md-nav__item">
-      <a href="api/utils/" class="md-nav__link">
+      <a href="../api/utils/" class="md-nav__link">
         
   
   
@@ -714,25 +630,80 @@
   
 
 
-<h1 id="vectorwaves-documentation">VectorWaves Documentation</h1>
-<p>VectorWaves is a Python library for constructing and analyzing electromagnetic fields through discrete plane-wave expansions.</p>
-<p>If you're looking for a quick introduction with simple examples, see the <a href="https://github.com/1rayokelvin/VectorWaves">README</a>.</p>
-<h2 id="tutorials">Tutorials</h2>
+<h1 id="physics-details">Physics Details</h1>
+<h2 id="conventions">Conventions</h2>
+<p><strong>Units and phase.</strong> Natural units, <code>c = 1</code>. The time-harmonic phase accumulated by each plane-wave mode is</p>
+<pre><code>phase = kx·x + ky·y + kz·z − ω·t
+</code></pre>
+<p>so <code>t</code> is in units of length (= <code>ct</code> in SI). <code>k</code> is stored in <code>rad / spatial_unit</code>, where spatial unit is whatever you set <code>op.size</code> and <code>op.spacing</code> in.</p>
+<p><strong>Beam axis and transverse plane.</strong> Default beam propagation axis is <code>z</code>. <code>compute_on_op</code> returns field values on the transverse plane at a given <code>z</code>; <code>compute_cloud</code> and <code>compute_point</code> evaluate arbitrary non-transverse points directly.</p>
+<p><strong>Jacobian indexing.</strong> <code>jacobian_E[i, j, ...]</code> is <code>dE_i / dx_j</code> — first index is the field component (Ex, Ey, Ez), second is the derivative direction (x, y, z). <code>div_E</code> is its trace; <code>curl_E</code> comes from its antisymmetric part.</p>
+<p><strong>Polarization basis.</strong> The base Jones vector (<code>config.source.pol_vect = (px, py)</code>) is defined relative to the beam axis. Both basis vectors are normalized on init. Handedness convention: <code>+1</code> = LCP / CCW, <code>−1</code> = RCP / CW, determined by the sign of <code>S3</code>. Used consistently in <code>get_pol_ellipse_params</code> and in the <code>handedness</code> field returned by all singularity finders.</p>
+<p><strong>Power normalization and intensity scale.</strong> Modes are constructed so that <code>sum(mode_irradiances) = 1</code> for a unit-amplitude source. <code>config.source.intensity_scale</code> enters as <code>sqrt(intensity_scale)</code> on the amplitude, so power scales linearly. For polychromatic fields, the spectral profile weights are additionally L2-normalized before scaling, so total power is preserved across different spectral shapes.</p>
+<p>For amplitude randomization (<code>randomize.amplitude</code>), each mode's amplitude is multiplied by a unit-variance complex Gaussian draw scaled by <code>1/sqrt(2)</code>, preserving the expected total power while adding speckle statistics.</p>
+<p><code>intensity_E</code> is real-space: it is the squared field magnitude evaluated point by point on the observation plane, carrying the power normalization set during beam construction. It is not a k-space quantity.</p>
+<hr />
+<h2 id="methods">Methods</h2>
+<p><strong>Fibonacci-sphere sampling.</strong> <code>BeamMaker</code> samples plane-wave wavevectors over the source's solid angle using a Fibonacci-sphere quadrature, which gives near-uniform angular density across the sphere without the polar clustering of a latitude/longitude grid. The accuracy of any field quantity scales with <code>config.source.num_modes</code>; for smooth structured beams a few thousand modes are typically sufficient, while speckle or highly non-paraxial sources require more.</p>
+<p><strong>Polarization transport (Rodrigues rotation).</strong> The base Jones vector <code>(px, py)</code> is defined on the beam axis. <code>BeamMaker</code> carries it to each plane-wave mode via a Rodrigues rotation that takes the beam axis unit vector to the mode's <code>k_hat</code>. This means every mode in the angular spectrum inherits a geometrically consistent polarization state, and no per-mode polarization specification is needed. Per-mode polarization vectors can be recovered after construction as <code>c / a</code> (vector amplitude divided by scalar amplitude).</p>
+<p><strong>Singularity conditions and their physical meaning.</strong></p>
+<p>In a non-paraxial field, the polarization ellipse is not confined to the transverse plane — it lives in a plane defined by its major and minor axes, and the ellipse's area vector is <code>Re(E) × Im(E)</code>. Two natural degenerate conditions arise:</p>
 <ul>
-<li><a href="tutorials/Scalar_tutorial/">Scalar fields</a>: verifying known scalar-field phenomenology, where non-paraxiality breaks the scalar picture, and the Wolf-type vectorial effects that emerge from it. Also covers custom k-space spectra and polychromatic fields.</li>
-<li><a href="tutorials/Vector_tutorial/">Vector fields</a>: constructing E, B, and the Poynting vector directly, decomposing into the left/right circular basis to see C-points as phase singularities, and scaling laws for C-point density in speckle fields.</li>
+<li>
+<p><strong>Lᵀ-points</strong> (<code>Re(E) × Im(E) = 0</code>): the area vector vanishes, meaning the polarization ellipse has collapsed to a line — <em>true</em> 3D linear polarization. The area vector being zero is the exact statement that no ellipse exists.</p>
+</li>
+<li>
+<p><strong>Cᵀ-points</strong> (<code>E·E = 0</code>): in the plane of the polarization ellipse, the major and minor axes are equal — <em>true</em> 3D circular polarization. <code>E·E = Ex²+Ey²+Ez²</code> (complex dot product, no conjugate), so this is a complex condition with real and imaginary parts both vanishing.</p>
+</li>
 </ul>
-<h2 id="physics">Physics</h2>
+<p>The Stokes C-points found by <code>find_stokes_C_points</code> are the <em>transverse projection</em> of this: <code>s1 = s2 = 0</code> sets only <code>Ex²+Ey² = 0</code> (ignoring Ez). In the paraxial limit Ez ≈ 0 and Stokes C-points and Cᵀ-points nearly coincide. For strongly non-paraxial fields (tight focus, maximally divergent beam, isotropic source), Ez is no longer negligible and the two singularity sets are geometrically distinct — <code>find_stokes_C_points</code> is a biased approximation of circular polarization in that regime.</p>
+<p>The analogous story for L is different in codimension. Stokes L lines are codimension-2 objects (surfaces in 3D, not lines), whereas Lᵀ lines are codimension-2 <em>lines</em> — so unlike the C/Cᵀ case, a projection of a line is always a line: every Lᵀ point projects onto an L point, but not conversely.</p>
+<p><strong>Singularity refinement.</strong> All finders follow the same two-stage pattern: locate candidates on the discrete <code>E_grid</code>, then refine to sub-pixel accuracy against a type-specific residual:</p>
+<table>
+<thead>
+<tr>
+<th>Singularity</th>
+<th>Condition</th>
+<th>Solver</th>
+<th>Residual</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Stokes C-point</td>
+<td><code>s1 = s2 = 0</code> (circular, transverse)</td>
+<td>Newton-Raphson</td>
+<td><code>sqrt(s1² + s2²)</code></td>
+</tr>
+<tr>
+<td>Cᵀ-point</td>
+<td><code>E·E = 0</code> (circular, full 3D)</td>
+<td>Newton-Raphson</td>
+<td><code>\|E·E\|</code></td>
+</tr>
+<tr>
+<td>Lᵀ-point</td>
+<td><code>Re(E) × Im(E) = 0</code> (linear, full 3D)</td>
+<td>Gauss-Newton</td>
+<td><code>\|Re(E) × Im(E)\|</code></td>
+</tr>
+</tbody>
+</table>
+<p>Stokes C-points and Cᵀ-points are square systems (2 real conditions, 2 unknowns in the plane), so standard Newton-Raphson applies directly.</p>
+<p>Lᵀ-points are different. The condition <code>N = Re(E) × Im(E) = 0</code> naively looks like 3 scalar conditions on 2 unknowns — overdetermined. However, since <code>N</code> is always orthogonal to <code>E</code>, the three components of <code>N</code> are not independent, and the true codimension is 2. The solver handles this by forming the normal equations (<code>Jᵀ J</code> and <code>Jᵀ N</code>) and solving with Gauss-Newton, which minimizes <code>|N|²</code> over the plane rather than requiring an exact square system.</p>
+<p>Default tolerances are <code>pos_tol = value_tol = 1e-6</code> with <code>max_iter = 10</code>. A point is marked <code>confident = True</code> if both converge within budget; non-confident points should be filtered before use (as in the README example).</p>
+<p><strong>A note on <code>value_tol</code> and intensity scale.</strong> The three residuals have different units:</p>
 <ul>
-<li><a href="physics/">Conventions and methods</a> — unit/phase/coordinate conventions, plus the reasoning behind Fibonacci-sphere sampling, parallel transport, and singularity refinement.</li>
+<li>Stokes C-point: <code>sqrt(s1² + s2²)</code> is dimensionless (normalized Stokes parameters absorb the local intensity). <code>value_tol = 1e-6</code> is an absolute fraction, scale-independent, and will work correctly regardless of source power.</li>
+<li>Cᵀ-point: <code>|E·E|</code> has units of intensity. <code>value_tol = 1e-6</code> is only meaningful relative to the local field amplitude.</li>
+<li>Lᵀ-point: <code>|Re(E) × Im(E)|</code> also has units of intensity.</li>
 </ul>
-<h2 id="api-reference">API Reference</h2>
-<ul>
-<li><a href="api/config/">Config</a></li>
-<li><a href="api/core/">Core Objects</a></li>
-<li><a href="api/singularities/">Singularities</a></li>
-<li><a href="api/utils/">Utilities</a></li>
-</ul>
+<p>For sources with unusual power spectra or low total power, <code>|E·E|</code> and <code>|Re(E) × Im(E)|</code> can sit below <code>1e-6</code> everywhere — making the condition trivially "met" near every candidate — or near machine precision, causing 1/small-number instability in the Jacobian. In both cases, tuning <code>config.source.intensity_scale</code> (which enters as <code>sqrt(intensity_scale)</code> on all mode amplitudes) brings the field up to a regime where the dimensional tolerances are meaningful.</p>
+<p>This is also why regions of genuinely low intensity — speckle dark spots, beam edges, nodal lines — are unreliable for Cᵀ and Lᵀ refinement even at normal power levels. The Stokes C-point finder is immune to this by construction, since normalization by <code>S0</code> (local intensity) is built into the Stokes parameters themselves, though that same division by <code>S0</code> will become numerically unstable if <code>S0</code> is near zero, so dark-spot candidates should be treated with scepticism regardless of <code>confident</code> status.</p>
+<p>Stokes C-points are additionally classified morphologically as <code>'Star'</code>, <code>'Lemon'</code>, or <code>'Monstar'</code> from the local index structure.</p>
+<p><strong>Line tracing.</strong> <code>trace_stokes_C_lines</code> / <code>trace_C_T_lines</code> / <code>trace_L_lines</code> walk outward from refined seed points in steps of size <code>ds</code> (default 0.05) along the local tangent, with a Newton corrector re-projecting each step back onto the singular condition. Output is one <code>(N_steps, 3)</code> trajectory array per seed; maximum steps per line is <code>max_steps</code> (default 500).</p>
+<p>For Lᵀ line tracing specifically, the same <code>N ⊥ E</code> dependence is used differently: rather than minimizing all three components, the tracer solves only <code>Ny = 0</code> and <code>Nz = 0</code> as two independent scalar conditions (vanishing of any two implies vanishing of the third), giving a well-posed 2×3 system for the tangent step that standard Newton handles directly.</p>
+<p><strong>Time dependence.</strong> Singularity finding defaults to <code>t = 0</code>. For monochromatic fields this is always correct — polarization topology is time-independent. For polychromatic fields, where the field envelope evolves in time, set <code>finder.t</code> explicitly to evaluate singularities at a specific moment.</p>
 
 
 
@@ -782,10 +753,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.tabs", "navigation.sections", "toc.integrate", "content.code.copy"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "toc.integrate", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>
