@@ -31,14 +31,6 @@ site/
 .ipynb_checkpoints/
 
 # -------------------------
-# Local test outputs
-# -------------------------
-test_config.json
-*.png
-*.jpg
-*.pdf
-
-# -------------------------
 # IDEs
 # -------------------------
 .vscode/
