@@ -1,3 +1,1 @@
-# Utilities
-
 ::: vectorwaves.utils

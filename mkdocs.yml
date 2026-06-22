@@ -39,4 +39,4 @@ nav:
     - Core Physics: api/core.md
     - Singularities: api/singularities.md
     - Utilities: api/utils.md
-  - Physics: physics.md
+  - Physics Details: physics.md

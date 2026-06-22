@@ -6,8 +6,8 @@ If you're looking for a quick introduction with simple examples, see the [README
 
 ## Tutorials
 
-- [Scalar fields](tutorials/Scalar_tutorial.ipynb): verifying known scalar-field phenomenology, where non-paraxiality breaks the scalar picture, and the Wolf-type vectorial effects that emerge from it. Also covers custom k-space spectra and polychromatic fields.
-- [Vector fields](tutorials/Vector_tutorial.ipynb): constructing E, B, and the Poynting vector directly, decomposing into the left/right circular basis to see C-points as phase singularities, and scaling laws for C-point density in speckle fields.
+- [Scalar Fields & Pulses](tutorials/Scalar_tutorial.ipynb): verifying known scalar-field phenomenology, where non-paraxiality breaks the scalar picture, and the Wolf-type vectorial effects that emerge from it. Also covers custom k-space spectra and polychromatic fields.
+- [Vector Fields & Singularities](tutorials/Vector_tutorial.ipynb): constructing E, B, and the Poynting vector directly, decomposing into the left/right circular basis to see C-points as phase singularities, and scaling laws for C-point density in speckle fields.
 
 ## Physics
 

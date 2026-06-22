@@ -42,11 +42,10 @@ pip install VectorWaves
 
 ```python
 import matplotlib.pyplot as plt
-import VectorWaves as vw
+import vectorwaves as vw
 
 # specifying the system
 config = vw.get_config()
-config.backend = 'numpy'
 
 config.op.size = (1.0, 1.0)
 config.op.spacing = 0.01
@@ -83,7 +82,7 @@ plt.show()
 To generate a speckle field, stochastic phase and amplitude are left enabled.
 ```python
 import matplotlib.pyplot as plt
-import VectorWaves as vw
+import vectorwaves as vw
 
 # specifying the system
 config = vw.get_config()
