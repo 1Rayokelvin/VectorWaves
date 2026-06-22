@@ -9,7 +9,7 @@ description = "Plane Wave Superposition toolkit"
 authors = [
   { name = "Mayank Soni" }
 ]
-readme = "README.md"
+readme = "README_PyPi.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 
@@ -46,3 +46,9 @@ package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[project.urls]
+Homepage = "https://github.com/1Rayokelvin/VectorWaves"
+Repository = "https://github.com/1Rayokelvin/VectorWaves"
+Issues = "https://github.com/1Rayokelvin/VectorWaves/issues"
+Documentation = "https://1rayokelvin.github.io/VectorWaves" 
