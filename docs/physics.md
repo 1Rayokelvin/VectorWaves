@@ -1,5 +1,3 @@
-# Physics Details
-
 ## Conventions
 
 **Units and phase.** Natural units, `c = 1`. The time-harmonic phase accumulated by each plane-wave mode is
