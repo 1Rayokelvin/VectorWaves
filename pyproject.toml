@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "vectorwaves"
 dynamic = ["version"]
-description = "Plane Wave Superposition toolkit"
+description = "Three-dimensional electromagnetic field simulation and topology analysis"
 authors = [
   { name = "Mayank Soni" }
 ]
@@ -44,6 +44,45 @@ all = [
   "pyvista>=0.40.0",
   "tqdm>=4.65.0",
   "cupy-cuda12x>=12.0.0"
+]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Education",
+
+    "License :: OSI Approved :: MIT License",
+
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+
+    "Operating System :: OS Independent",
+
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering",
+]
+
+keywords = [
+    "physics",
+    "optics",
+    "wave-optics",
+    "vector-optics",
+    "electromagnetism",
+    "electromagnetic-fields",
+    "structured-light",
+    "gaussian-beams",
+    "laguerre-gaussian",
+    "plane-wave-expansion",
+    "computational-physics",
+    "optical-singularities",
+    "polarization-singularities",
+    "phase-singularities",
+    "topological-optics",
+    "optical-vortices"
 ]
 
 [tool.setuptools.dynamic]
