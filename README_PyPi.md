@@ -1,4 +1,4 @@
-VectorWaves provides a framework for generating, computing, and analyzing fully three-dimensional electromagnetic fields through discrete plane-wave expansions.
+VectorWaves provides a framework for generating, computing, and analyzing fully three-dimensional electromagnetic fields and their topology through discrete plane-wave expansions.
 
 ## Installation
 
@@ -17,7 +17,7 @@ For additional features, you can install the optional dependencies:
 
 To install, 
 ```bash
-pip install vectorwaves[#Extra]
+pip install vectorwaves[extra]
 ```
 
 ## Features
@@ -25,16 +25,16 @@ pip install vectorwaves[#Extra]
 - Physics-oriented configuration system with `numpy`, `numba`, and CuPy (GPU) backends.
 - Exact non-paraxial 3D propagation via Fibonacci-sphere discrete plane-wave expansions.
 - Monochromatic and polychromatic sources with arbitrary envelopes, structured light support.
+- Stochastic process generation for speckle-like fields.
 - Fully analytic computation of E-fields, B-fields, spatial derivatives.
-- Topological polarization analysis: C, Cᵀ, and Lᵀ point sub-pixel refinement and 3D line tracing.
-- Stochastic processes generation for speckle like fields.
-
+- Topological polarization analysis: C, Cᵀ, and Lᵀ point finding with 3D line tracing.
+  
 ## Quick Example
 
 ```python
 import vectorwaves as vw
 
-# Configure the physical system
+# Generate a tightly-focused Laguerre-Gaussian beam
 config = vw.get_config()
 config.source.k_space.laguerre_gauss(p=1, l=2, sigma_k_perp=1)
 config.source.randomize.off()

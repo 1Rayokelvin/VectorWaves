@@ -21,6 +21,11 @@ For additional features, you can install optional dependencies:
 | `gpu` | CUDA acceleration via CuPy |
 | `all` | All the above |
 
+To install, 
+```bash
+pip install vectorwaves[#Extra]
+```
+
 ## Features
 
 - **Exact 3D Fields**: Electric, Magnetic fields and spatial derivatives via Fibonacci-sphere discrete plane-wave expansions.
