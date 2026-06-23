@@ -1,73 +1,56 @@
-# Conventions
+This page details the core methods, conventions, and topological concepts utilized in VectorWaves.
 
-**Units and phase.** Natural units, `c = 1`. The time-harmonic phase accumulated by each plane-wave mode is
+## 1. Discrete Plane-Wave Expansions
 
-```
-phase = kx·x + ky·y + kz·z − ω·t
-```
+VectorWaves constructs fields through the superposition of plane waves. To sample the angular spectrum efficiently and without bias, `BeamMaker` samples wavevectors over the source's solid angle using a **Fibonacci-sphere quadrature**.
 
-so `t` is in units of length (= `ct` in SI). `k` is stored in `rad / spatial_unit`, where spatial unit is whatever you set `op.size` and `op.spacing` in.
+This approach provides near-uniform angular density across the sphere, avoiding the polar clustering issues associated with a standard latitude/longitude grid. The accuracy of any computed field quantity scales with `config.source.num_modes`. For typical simulations, a few thousand modes are sufficient with proper tuning of source's solid angle i.e. `config.source.theta_max`.
 
-**Beam axis and transverse plane.** Default beam propagation axis is `z`. `compute_on_op` returns field values on the transverse plane at a given `z`; `compute_cloud` and `compute_point` evaluate arbitrary non-transverse points directly.
+### Power Normalization and Intensity Scale
+Modes are constructed such that `sum(mode_irradiances) = 1` for a unit-amplitude source. The `config.source.intensity_scale` enters as `sqrt(intensity_scale)` on the amplitude, meaning total power scales linearly. 
 
-**Jacobian indexing.** `jacobian_E[i, j, ...]` is `dE_i / dx_j` — first index is the field component (Ex, Ey, Ez), second is the derivative direction (x, y, z). `div_E` is its trace; `curl_E` comes from its antisymmetric part.
+For polychromatic fields, spectral profile weights are L2-normalized before scaling, ensuring total power is preserved across different spectral shapes. For amplitude randomization (`randomize.amplitude`), each mode's amplitude is multiplied by a unit-variance complex Gaussian draw scaled by `1/sqrt(2)`. This preserves expected total power while successfully introducing speckle statistics.
 
-**Polarization basis.** The base Jones vector (`config.source.pol_vect = (px, py)`) is defined relative to the beam axis. Both basis vectors are normalized on init. Handedness convention: `+1` = LCP / CCW, `−1` = RCP / CW, determined by the sign of `S3`. Used consistently in `get_pol_ellipse_params` and in the `handedness` field returned by all singularity finders.
+*(Note: `intensity_E` is a real-space quantity representing the squared field magnitude evaluated point by point, carrying the power normalization set during beam construction.)*
 
-**Power normalization and intensity scale.** Modes are constructed so that `sum(mode_irradiances) = 1` for a unit-amplitude source. `config.source.intensity_scale` enters as `sqrt(intensity_scale)` on the amplitude, so power scales linearly. For polychromatic fields, the spectral profile weights are additionally L2-normalized before scaling, so total power is preserved across different spectral shapes.
+## 2. Polarization Transport
 
-For amplitude randomization (`randomize.amplitude`), each mode's amplitude is multiplied by a unit-variance complex Gaussian draw scaled by `1/sqrt(2)`, preserving the expected total power while adding speckle statistics.
+To ensure that the polarization of each plane-wave mode is physically consistent with the overall beam, VectorWaves utilizes **Rodrigues rotation** for polarization transport.
 
-`intensity_E` is real-space: it is the squared field magnitude evaluated point by point on the observation plane, carrying the power normalization set during beam construction. It is not a k-space quantity.
+The user defines a base Jones vector, `config.source.pol_vect = (px, py)`, relative to the macroscopic propagation axis `config.source.beam_axis`. `BeamMaker` then carries this vector to each individual plane-wave mode via a Rodrigues rotation that maps the beam axis unit vector to the specific mode's wavevector `k_hat`. This is done for a geometrically determined polarization state.
 
----
+## 3. Conventions & Units
 
-# Methods
+- **Units and Phase:** VectorWaves uses natural units where `c = 1`. The time-harmonic phase accumulated by each plane-wave mode is `phase = kx·x + ky·y + kz·z − ω·t`. Therefore, time `t` is defined in units of length (equivalent to `ct` in SI). Wavenumber `k` is stored in `rad / spatial_unit`, where the spatial unit is determined by `op.size` and `op.spacing`.
+- **Beam Axis:** The default propagation axis is `z`. `compute_on_op` returns field values on the transverse (xy) plane at a given `z`, while `compute_cloud` and `compute_point` evaluate arbitrary 3D spatial points directly.
+- **Jacobian Indexing:** Spatial derivatives follow the convention `jacobian_E[i, j, ...]` representing `dE_i / dx_j` (first index is field component, second is derivative direction). `div_E` is its trace; `curl_E` arises from its antisymmetric part.
+- **Polarization Handedness:** `+1` indicates Left Circular Polarization (LCP) / Counter-Clockwise (CCW) rotation. `−1` indicates Right Circular Polarization (RCP) / Clockwise (CW) rotation. This convention is determined by the sign of the Stokes parameter `S3` and is used consistently throughout the singularity finders.
 
-**Fibonacci-sphere sampling.** `BeamMaker` samples plane-wave wavevectors over the source's solid angle using a Fibonacci-sphere quadrature, which gives near-uniform angular density across the sphere without the polar clustering of a latitude/longitude grid. The accuracy of any field quantity scales with `config.source.num_modes`; for smooth structured beams a few thousand modes are typically sufficient, while speckle or highly non-paraxial sources require more.
+## 4. Polarization Topology & Singularities
 
-**Polarization transport (Rodrigues rotation).** The base Jones vector `(px, py)` is defined on the beam axis. `BeamMaker` carries it to each plane-wave mode via a Rodrigues rotation that takes the beam axis unit vector to the mode's `k_hat`. This means every mode in the angular spectrum inherits a geometrically consistent polarization state, and no per-mode polarization specification is needed. Per-mode polarization vectors can be recovered after construction as `c / a` (vector amplitude divided by scalar amplitude).
+In non-paraxial fields, polarization ellipses are not confined to the transverse plane. The ellipse lives in a plane defined by its major and minor axes, with an area vector given by `Re(E) × Im(E)`. Two natural, degenerate topological singularities arise in full 3D:
 
-**Singularity conditions and their physical meaning.**
+- **Lᵀ-points (True 3D Linear Polarization):** Occur where `Re(E) × Im(E) = 0`. The area vector vanishes, meaning the polarization ellipse collapses strictly to a line. Found by `find_C_T_points`.
+- **Cᵀ-points (True 3D Circular Polarization):** Occur where `E·E = 0` (complex dot product, no conjugate). In the plane of the ellipse, the major and minor axes are perfectly equal. Found by `find_L_T_points`.
 
-In a non-paraxial field, the polarization ellipse is not confined to the transverse plane — it lives in a plane defined by its major and minor axes, and the ellipse's area vector is `Re(E) × Im(E)`. Two natural degenerate conditions arise:
+### Stokes Projections
+The Stokes C-points found by `find_stokes_C_points`, where `s1 = s2 = 0`, equivalently `Ex² + Ey² = 0` (ignoring Ez, transverse projection). In the paraxial limit, Ez is negligible, making Stokes C-points and Cᵀ-points nearly identical. However, for strongly non-paraxial fields (e.g., tight focuses or isotropic sources), Ez is significant. Here, the two singularity sets become geometrically distinct, and transverse Stokes C-points become biased approximations.
 
-- **Lᵀ-points** (`Re(E) × Im(E) = 0`): the area vector vanishes, meaning the polarization ellipse has collapsed to a line — *true* 3D linear polarization. The area vector being zero is the exact statement that no ellipse exists.
-
-- **Cᵀ-points** (`E·E = 0`): in the plane of the polarization ellipse, the major and minor axes are equal — *true* 3D circular polarization. `E·E = Ex²+Ey²+Ez²` (complex dot product, no conjugate), so this is a complex condition with real and imaginary parts both vanishing.
-
-The Stokes C-points found by `find_stokes_C_points` are the *transverse projection* of this: `s1 = s2 = 0` sets only `Ex²+Ey² = 0` (ignoring Ez). In the paraxial limit Ez ≈ 0 and Stokes C-points and Cᵀ-points nearly coincide. For strongly non-paraxial fields (tight focus, maximally divergent beam, isotropic source), Ez is no longer negligible and the two singularity sets are geometrically distinct — `find_stokes_C_points` is a biased approximation of circular polarization in that regime.
-
-The analogous story for L is different in codimension. Stokes L lines are codimension-2 objects (surfaces in 3D, not lines), whereas Lᵀ lines are codimension-2 *lines* — so unlike the C/Cᵀ case, a projection of a line is always a line: every Lᵀ point projects onto an L point, but not conversely.
-
-**Singularity refinement.** All finders follow the same two-stage pattern: locate candidates on the discrete `E_grid`, then refine to sub-pixel accuracy against a type-specific residual:
+### Singularity Refinement
+To precisely locate these singularities, finders first locate candidates on the discrete `E_grid`, then refine their positions to sub-pixel accuracy against a specific residual:
 
 | Singularity | Condition | Solver | Residual |
 |---|---|---|---|
-| Stokes C-point | `s1 = s2 = 0` (circular, transverse) | Newton-Raphson | `sqrt(s1² + s2²)` |
-| Cᵀ-point | `E·E = 0` (circular, full 3D) | Newton-Raphson | `\|E·E\|` |
-| Lᵀ-point | `Re(E) × Im(E) = 0` (linear, full 3D) | Gauss-Newton | `\|Re(E) × Im(E)\|` |
+| **Stokes C-point** | `s1 = s2 = 0` | Newton-Raphson | `sqrt(s1² + s2²)` |
+| **Cᵀ-point** | `E·E = 0` | Newton-Raphson | `\|E·E\|` |
+| **Lᵀ-point** | `Re(E) × Im(E) = 0` | Gauss-Newton | `\|Re(E) × Im(E)\|` |
 
-Stokes C-points and Cᵀ-points are square systems (2 real conditions, 2 unknowns in the plane), so standard Newton-Raphson applies directly.
+While Stokes C-points and Cᵀ-points are exact square systems (2 conditions, 2 unknowns in a plane) solvable by Newton-Raphson, Lᵀ-points appear overdetermined (3 scalar conditions on 2 unknowns). Because the area vector `N` is always orthogonal to `E`, its components aren't independent. The solver utilizes Gauss-Newton to minimize `|N|²` instead.
 
-Lᵀ-points are different. The condition `N = Re(E) × Im(E) = 0` naively looks like 3 scalar conditions on 2 unknowns — overdetermined. However, since `N` is always orthogonal to `E`, the three components of `N` are not independent, and the true codimension is 2. The solver handles this by forming the normal equations (`Jᵀ J` and `Jᵀ N`) and solving with Gauss-Newton, which minimizes `|N|²` over the plane rather than requiring an exact square system.
+### A Note on Tolerances
+The Stokes C-point residual, `sqrt(s1² + s2²)`, is dimensionless since the normalized Stokes parameters absorb the local intensity `S0`. The default `value_tol = 1e-6` works reliably regardless of source power. 
 
-Default tolerances are `pos_tol = value_tol = 1e-6` with `max_iter = 10`. A point is marked `confident = True` if both converge within budget; non-confident points should be filtered before use (as in the README example).
+Conversely, the residuals for Cᵀ and Lᵀ points possess units of intensity. In regions of low intensity—such as speckle dark spots or nodal lines—these absolute residuals can artificially fall below the threshold or induce instability. Tuning `config.source.intensity_scale` helps bring the field into a numerical regime where these dimensional tolerances are meaningful. 
 
-**A note on `value_tol` and intensity scale.** The three residuals have different units:
-
-- Stokes C-point: `sqrt(s1² + s2²)` is dimensionless (normalized Stokes parameters absorb the local intensity). `value_tol = 1e-6` is an absolute fraction, scale-independent, and will work correctly regardless of source power.
-- Cᵀ-point: `|E·E|` has units of intensity. `value_tol = 1e-6` is only meaningful relative to the local field amplitude.
-- Lᵀ-point: `|Re(E) × Im(E)|` also has units of intensity.
-
-For sources with unusual power spectra or low total power, `|E·E|` and `|Re(E) × Im(E)|` can sit below `1e-6` everywhere — making the condition trivially "met" near every candidate — or near machine precision, causing 1/small-number instability in the Jacobian. In both cases, tuning `config.source.intensity_scale` (which enters as `sqrt(intensity_scale)` on all mode amplitudes) brings the field up to a regime where the dimensional tolerances are meaningful.
-
-This is also why regions of genuinely low intensity — speckle dark spots, beam edges, nodal lines — are unreliable for Cᵀ and Lᵀ refinement even at normal power levels. The Stokes C-point finder is immune to this by construction, since normalization by `S0` (local intensity) is built into the Stokes parameters themselves, though that same division by `S0` will become numerically unstable if `S0` is near zero, so dark-spot candidates should be treated with scepticism regardless of `confident` status.
-
-Stokes C-points are additionally classified morphologically as `'Star'`, `'Lemon'`, or `'Monstar'` from the local index structure.
-
-**Line tracing.** `trace_stokes_C_lines` / `trace_C_T_lines` / `trace_L_lines` walk outward from refined seed points in steps of size `ds` (default 0.05) along the local tangent, with a Newton corrector re-projecting each step back onto the singular condition. Output is one `(N_steps, 3)` trajectory array per seed; maximum steps per line is `max_steps` (default 500).
-
-For Lᵀ line tracing specifically, the same `N ⊥ E` dependence is used differently: rather than minimizing all three components, the tracer solves only `Ny = 0` and `Nz = 0` as two independent scalar conditions (vanishing of any two implies vanishing of the third), giving a well-posed 2×3 system for the tangent step that standard Newton handles directly.
-
-**Time dependence.** Singularity finding defaults to `t = 0`. For monochromatic fields this is always correct — polarization topology is time-independent. For polychromatic fields, where the field envelope evolves in time, set `finder.t` explicitly to evaluate singularities at a specific moment.
+### Line Tracing
+Singularities form structures in 3D. `trace_stokes_C_lines`, `trace_C_T_lines`, and `trace_L_lines` walk outward from refined seed points along the local tangent in steps of size `ds`, utilizing a Newton corrector to continuously re-project each step back onto the singular condition manifold.

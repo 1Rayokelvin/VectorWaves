@@ -38,6 +38,14 @@ gpu = [
   "cupy-cuda12x>=12.0.0"
 ]
 
+# ALL optional dependencies
+all = [
+  "matplotlib>=3.7.0",
+  "pyvista>=0.40.0"
+  "tqdm>=4.65.0"
+  "cupy-cuda12x>=12.0.0"
+]
+
 [tool.setuptools.dynamic]
 version = { attr = "vectorwaves.version.current_version_str" }
 

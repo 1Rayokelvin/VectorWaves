@@ -217,7 +217,7 @@ class Beam:
 
     def plot_kspace_3d(
             self,  cmap='inferno', show: bool =True,
-            plot_type:Literal['colored_vectors','colored_sphere']='colored_vectors'
+            plot_type:Literal['colored_vectors','colored_sphere','matplotlib_scatter']='colored_vectors'
             ):
         """
         Renders an interactive 3D visualization of the wavevectors and amplitudes.
@@ -227,8 +227,12 @@ class Beam:
         cmap : str, optional
             Colormap for mode amplitudes (default is 'inferno').
         plot_type : Literal['colored_vectors', 'colored_sphere'], optional
-            'colored_vectors' plots arrows along k_hat directions.
-            'colored_sphere' plots a continuous heatmap mapped to a unit sphere.
+            'colored_vectors'
+                Interactive PyVista arrows.
+            'colored_sphere'
+                Interactive PyVista sphere heatmap.
+            'matplotlib_scatter'
+                Lightweight matplotlib 3D scatter.
         show: bool, optional
             If True, displays the plot. Default is True.
 
@@ -237,6 +241,38 @@ class Beam:
         pyvista.Plotter or None
             Plotter object for further manipulation, or None if PyVista is missing.
         """
+
+        if plot_type == 'matplotlib_scatter':
+            import matplotlib.pyplot as plt
+            from matplotlib.colors import Normalize
+            from matplotlib.cm import ScalarMappable
+
+            fig = plt.figure(figsize=(16,9))
+            ax = fig.add_subplot(projection="3d")
+
+            sc = ax.scatter(
+                self.k_hat[0],
+                self.k_hat[1],
+                self.k_hat[2],
+                c=self.amplitudes,
+                cmap=cmap,
+                s=30
+            )
+
+            ax.set_xlabel(r"$k_x$", fontsize=20)
+            ax.set_ylabel(r"$k_y$", fontsize=20)
+            ax.set_zlabel(r"$k_z$", fontsize=20)
+
+            ax.set_box_aspect((1, 1, 0.5))
+
+            cbar = fig.colorbar(sc, ax=ax)
+            cbar.set_label("Amplitude", fontsize=15)
+
+            if show:
+                plt.show()
+
+            return ax
+
         try:
             import pyvista as pv
         except ImportError:

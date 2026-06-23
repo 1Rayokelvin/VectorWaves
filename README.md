@@ -2,135 +2,77 @@
 
 A Python library for constructing and analyzing electromagnetic fields through discrete plane-wave expansions.
 
-## Introduction
+Classical light is fundamentally an electromagnetic wave. In vacuum, electromagnetic fields admit a plane-wave decomposition, and VectorWaves provides a framework for constructing, computing, and analyzing fully three-dimensional vector fields and their topological structures.
 
-Classical light is fundamentally an electromagnetic wave. In vacuum, electromagnetic fields admit a plane-wave decomposition, and VectorWaves is built around this principle. It provides a framework for constructing, computing, and analyzing fully three-dimensional vector fields and their topology.
-
-VectorWaves constructs optical sources through plane-wave modes. These modes are sampled over a specified solid angle using Fibonacci-sphere quadratures. This enables the generation of a wide variety of fields, including monochromatic sources with prescribed spatial structure (Gaussian, Laguerre-Gaussian, speckle, custom profiles, etc.) as well as polychromatic fields with arbitrary spectral distributions (Gaussian, Lorentzian, custom profiles, etc.)
-
-The computational workflow is organized into three stages. Using a Config object, the user specifies the physical system and numerical parameters. BeamMaker then generates a Beam object containing the plane wave modes. Finally, FieldEngine evaluates the resulting electromagnetic field on an individual point, observation planes, or arbitrary cloud of points. Field quantities may be computed at specific times, and multiple computational backends are available, including GPU acceleration through CuPy.
-
-To analyze the topology of these fields, VectorWaves also provides the SingularityFinder interface. Given fields computed by a FieldEngine, singular structures such as C-points, Cᵀ-points, and Lᵀ-points can be detected on observation planes and subsequently refined on the underlying continuous field using Newton-Raphson algorithms. These refined singularities may then be used as seed points for tracing the corresponding two-dimensional singular lines throughout the three-dimensional volume.
-
-The overall workflow is
-
-Config → BeamMaker → Beam → FieldEngine → FieldResult
-
-and topological analysis follows
-
-FieldEngine + FieldResult → SingularityFinder
-
-For convenience, the helper functions `setup_beam(Config)` and `setup_engine(Config)` provide direct access to Beam and FieldEngine respectively.
+**For full documentation, basic usage, and tutorials, visit the [official documentation site](https://1rayokelvin.github.io/VectorWaves).**
 
 ## Installation
 
+```bash
 pip install VectorWaves
+```
+
+For additional features, you can install optional dependencies:
+
+| Extra | Purpose |
+|---------|---------|
+| `viz` | Matplotlib and PyVista for visualizations |
+| `progress` | Progress bars via tqdm |
+| `gpu` | CUDA acceleration via CuPy |
+| `all` | All the above |
 
 ## Features
 
-- Angular-spectrum plane-wave construction using Fibonacci-sphere quadratures
-- Fully three-dimensional electric and magnetic field evaluation
-- Spatial derivative computation
-- Monochromatic and polychromatic optical sources
-- Structured beams, speckle fields, and custom source profiles
-- GPU acceleration through CuPy
-- Detection and tracing of polarization singularities
+- **Exact 3D Fields**: Electric, Magnetic fields and spatial derivatives via Fibonacci-sphere discrete plane-wave expansions.
+- **Monochromatic Source Models**: Built-in source definitions and arbitrary user-defined spatial spectra.
+- **Polychromatic Source Models**: Built-in spectral distributions and arbitrary user-defined spectral profiles.
+- **Advanced Topology**: Detect and trace polarization singularities (C, Cᵀ, and Lᵀ points/lines).
+- **Physical Diagnostics**: Easily compute Stokes parameters and polarization ellipses for quick visuals.
+- **Stochastic Fields**: Built-in randomization for generating speckles and unpolarized fields.
+- **High Performance**: Hierarchical configuration with seamless switching between CPU (`numpy`, `numba`) and GPU (`cupy`) backends.
 
-## Basic Usage
+## Quick Tour: The Power of Plane-Wave Superposition
 
-### Generating a Gaussian beam
+Because VectorWaves natively superposes true 3D plane-wave vectors, it effortlessly captures complex non-paraxial vector effects that scalar FFT propagators miss entirely. 
+
+For example, when you tightly focus a linearly polarized Gaussian beam, a longitudinal (z-direction) electric field and a clover-like cross-polarized field naturally emerge purely from the geometry of the converging wavevectors.
 
 ```python
 import matplotlib.pyplot as plt
+plt.style.use('dark_background')
+import numpy as np
 import vectorwaves as vw
 
-# specifying the system
+# 1. Configure a tightly focused, x-polarized Gaussian beam
 config = vw.get_config()
-
-config.op.size = (1.0, 1.0)
-config.op.spacing = 0.01
-
-config.source.wavelength = 1.0
-config.source.num_modes = 15000
-
-config.source.k_space.gaussian(sigma_k_perp=1.5)
+config.op.size = (2,2); config.op.spacing = 0.02
+config.source.pol_vect = (1, 0)
+config.source.k_space.gaussian(sigma_k_perp=2.0) # High divergence
+config.source.theta_max = np.pi/2 # Allow modes up to 90 degrees
 config.source.randomize.off()
 
-# constructing the engine using helper
+# 2. Construct the engine and compute the exact vector field at the focus
 engine = vw.setup_engine(config)
-
-# computing fields
 result = engine.compute_on_op(z=0.0)
 
-# plotting intensity
-plt.imshow(
-    result.intensity_E,
-    cmap="inferno",
-    extent=engine.op_extent,
-    origin="lower"
-)
-plt.colorbar(label="|E|²")
-plt.title("Gaussian Beam Intensity")
-plt.show()
-```
-![Gaussian beam intensity](docs/images/gaussian_beam.png)
-
-*Intensity cross-section of a Gaussian beam generated by VectorWaves.*
-
-### Finding C points in a speckle cross-section
-
-To generate a speckle field, stochastic phase and amplitude are left enabled.
-```python
-import matplotlib.pyplot as plt
-import vectorwaves as vw
-
-# specifying the system
-config = vw.get_config()
-config.op.size = (1.0, 1.0)
-config.op.spacing = 0.01
-
-config.source.wavelength = 1.0
-config.source.num_modes = 15000
-
-config.source.k_space.gaussian(sigma_k_perp=1.5)
-# stochastic phase and amplitude variations are enabled by default
-
-# constructing the engine
-engine = vw.setup_engine(config)
-
-# computing fields
-result = engine.compute_on_op(z=0.0)
+# 3. Extract the intensity of x and z components
 Ex, Ey, Ez = result.E
+I_x, I_z = np.abs(Ex)**2, np.abs(Ez)**2
 
-# utility function for stokes parameters
-s_all = vw.get_stokes_params(Ex, Ey, normalize=True) 
+# Plotting the two intensities
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12,5))
+extent = engine.op_extent
 
-# finding C points
-finder = vw.SingularityFinder(engine)
-c_points = finder.find_stokes_C_points(z_value=0.0, E_grid=result.E)
+im1 = ax1.imshow(I_x, extent=extent, cmap='magma'); ax1.set_title("|Ex|² (Main)")
+im2 = ax2.imshow(I_z, extent=extent, cmap='magma'); ax2.set_title("|Ez|² (Longitudinal)")
 
-# Keep only singularities whose refinement converged
-cp_positions = [pt['position'] for pt in c_points if pt['confident']]
-cp_handedness = [pt['handedness'] for pt in c_points if pt['confident']]
-
-# plot positions and handedness of C points
-if cp_positions:
-    x, y, z = zip(*cp_positions)
-    plt.scatter(x, y, c=cp_handedness, cmap='bwr', edgecolor='k', zorder=5)
-
-# plot s3 field
-plt.imshow(s_all['s3'], cmap='coolwarm', origin='lower', extent=engine.op_extent)
-plt.colorbar(label='Normalized s3')
-plt.title('s3 field with C-points marked')
+fig.colorbar(im1, ax=ax1); fig.colorbar(im2, ax=ax2)
+plt.tight_layout()
 plt.show()
 ```
-![C-point detection](docs/images/cpoints.png)
 
-*Normalized Stokes s₃ field with detected C-points overlaid.*
+![Gaussian Beam components](docs/images/gaussian_beam_vector.png)
+*(Note the colorbar scales: the solver automatically calculates the correct relative magnitudes of the emergent longitudinal components without any paraxial approximations).*
 
-
-## Further Reading
-
-These examples only demonstrate the basic workflow.
-
-For a detailed introduction to the underlying physics, source construction, polychromatic fields, volumetric field evaluation, derivative computation, and singularity tracing, see the tutorials and API documentation at https://1rayokelvin.github.io/VectorWaves.
+### Ready to learn more?
+For a gentler introduction covering basic configurations, spectral envelopes, or fully 3D field visualizations, head over to the **[Getting Started Guide](https://1rayokelvin.github.io/VectorWaves)**.
