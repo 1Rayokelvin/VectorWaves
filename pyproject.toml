@@ -21,31 +21,6 @@ dependencies = [
   "numba>=0.59.0" 
 ]
 
-[project.optional-dependencies]
-# VISUALIZATION: Plotting k-space, profiles, and tutorials
-viz = [
-  "matplotlib>=3.7.0",
-  "pyvista>=0.40.0"
-]
-
-# PROGRESS: Console loading bars
-progress = [
-  "tqdm>=4.65.0"
-]
-
-# GPU: CuPy for CUDA 12.x (Note: Users with AMD or older CUDA will need to install their specific cupy build)
-gpu = [
-  "cupy-cuda12x>=12.0.0"
-]
-
-# ALL optional dependencies
-all = [
-  "matplotlib>=3.7.0",
-  "pyvista>=0.40.0",
-  "tqdm>=4.65.0",
-  "cupy-cuda12x>=12.0.0"
-]
-
 classifiers = [
     "Development Status :: 4 - Beta",
 
@@ -83,6 +58,31 @@ keywords = [
     "phase-singularities",
     "topological-optics",
     "optical-vortices"
+]
+
+[project.optional-dependencies]
+# VISUALIZATION: Plotting k-space, profiles, and tutorials
+viz = [
+  "matplotlib>=3.7.0",
+  "pyvista>=0.40.0"
+]
+
+# PROGRESS: Console loading bars
+progress = [
+  "tqdm>=4.65.0"
+]
+
+# GPU: CuPy for CUDA 12.x (Note: Users with AMD or older CUDA will need to install their specific cupy build)
+gpu = [
+  "cupy-cuda12x>=12.0.0"
+]
+
+# ALL optional dependencies
+all = [
+  "matplotlib>=3.7.0",
+  "pyvista>=0.40.0",
+  "tqdm>=4.65.0",
+  "cupy-cuda12x>=12.0.0"
 ]
 
 [tool.setuptools.dynamic]
