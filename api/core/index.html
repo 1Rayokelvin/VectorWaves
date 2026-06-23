@@ -94,7 +94,9 @@
     
       
 
-<header class="md-header" data-md-component="header">
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
     <a href="../.." title="VectorWaves" class="md-header__button md-logo" aria-label="VectorWaves" data-md-component="logo">
       
@@ -190,95 +192,6 @@
       
         
           
-            
-<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
-  <div class="md-grid">
-    <ul class="md-tabs__list">
-      
-        
-  
-  
-  
-  
-    <li class="md-tabs__item">
-      <a href="../.." class="md-tabs__link">
-        
-  
-  
-    
-  
-  Home
-
-      </a>
-    </li>
-  
-
-      
-        
-  
-  
-  
-  
-    
-    
-      <li class="md-tabs__item">
-        <a href="../../tutorials/Scalar_tutorial/" class="md-tabs__link">
-          
-  
-  
-  Tutorials
-
-        </a>
-      </li>
-    
-  
-
-      
-        
-  
-  
-  
-    
-  
-  
-    
-    
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="../config/" class="md-tabs__link">
-          
-  
-  
-  API Reference
-
-        </a>
-      </li>
-    
-  
-
-      
-        
-  
-  
-  
-  
-    <li class="md-tabs__item">
-      <a href="../../physics/" class="md-tabs__link">
-        
-  
-  
-    
-  
-  Physics Details
-
-      </a>
-    </li>
-  
-
-      
-    </ul>
-  </div>
-</nav>
-          
         
       
       <main class="md-main" data-md-component="main">
@@ -292,12 +205,8 @@
                     
 
 
-  
 
-
-  
-
-<nav class="md-nav md-nav--primary md-nav--lifted md-nav--integrated" aria-label="Navigation" data-md-level="0">
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
     <a href="../.." title="VectorWaves" class="md-nav__button md-logo" aria-label="VectorWaves" data-md-component="logo">
       
@@ -358,11 +267,6 @@
     
     
     
-    
-      
-      
-        
-      
     
     
     <li class="md-nav__item md-nav__item--nested">
@@ -476,23 +380,15 @@
     
     
     
-      
-        
-        
-      
-      
-        
-      
     
-    
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
       
         
         
         <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
             
   
   
@@ -1049,6 +945,362 @@
               </div>
             
             
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#vectorwaves.beam_stuff.BeamMaker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BeamMaker
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="BeamMaker">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.beam_stuff.BeamMaker.generate_beam" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        generate_beam
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vectorwaves.beam_stuff.Beam" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Beam
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Beam">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.beam_stuff.Beam.amplitudes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        amplitudes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.beam_stuff.Beam.k_hat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        k_hat
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.beam_stuff.Beam.mean_direction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mean_direction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.beam_stuff.Beam.mode_irradiances" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mode_irradiances
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.beam_stuff.Beam.mode_weights" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mode_weights
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.beam_stuff.Beam.num_modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        num_modes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.beam_stuff.Beam.polarizations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        polarizations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.beam_stuff.Beam.rms_divergence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rms_divergence
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.beam_stuff.Beam.total_power" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        total_power
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.beam_stuff.Beam.wavelength_spectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        wavelength_spectrum
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.beam_stuff.Beam.wavelengths" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        wavelengths
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.beam_stuff.Beam.plot_k_perp_profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_k_perp_profile
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.beam_stuff.Beam.plot_kspace_3d" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_kspace_3d
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.beam_stuff.Beam.plot_wavelength_spectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_wavelength_spectrum
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.beam_stuff.Beam.summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        summary
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vectorwaves.engine_stuff.FieldEngine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FieldEngine
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="FieldEngine">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.engine_stuff.FieldEngine.compute_cloud" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        compute_cloud
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.engine_stuff.FieldEngine.compute_on_op" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        compute_on_op
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.engine_stuff.FieldEngine.compute_point" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        compute_point
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vectorwaves.engine_stuff.FieldResult" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FieldResult
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="FieldResult">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.engine_stuff.FieldResult.B" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        B
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.engine_stuff.FieldResult.curl_E" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        curl_E
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.engine_stuff.FieldResult.div_E" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        div_E
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.engine_stuff.FieldResult.intensity_E" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        intensity_E
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vectorwaves.engine_stuff.FieldResult.jacobian_E" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        jacobian_E
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
           
           
             <div class="md-content" data-md-component="content">
@@ -1059,6 +1311,14 @@
 
 
   
+  
+    
+      
+    
+    <a href="https://github.com/1Rayokelvin/VectorWaves/raw/master/docs/api/core.md" title="View source of this page" class="md-content__button md-icon">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 18c.56 0 1 .44 1 1s-.44 1-1 1-1-.44-1-1 .44-1 1-1m0-3c-2.73 0-5.06 1.66-6 4 .94 2.34 3.27 4 6 4s5.06-1.66 6-4c-.94-2.34-3.27-4-6-4m0 6.5a2.5 2.5 0 0 1-2.5-2.5 2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-2.5 2.5M9.27 20H6V4h7v5h5v4.07c.7.08 1.36.25 2 .49V8l-6-6H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.5a8.2 8.2 0 0 1-1.23-2"/></svg>
+    </a>
   
 
 
@@ -5386,7 +5646,7 @@ Raises RuntimeError if 'need_derivs' was False during computation.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "toc.integrate", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["content.action.view"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
       <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
